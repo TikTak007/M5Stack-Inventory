@@ -13,7 +13,7 @@ AtomS3のボタンAは使いません。Unit QRCodeのTRIGを押している間�
 - READY、SCANNING、QUEUED、SENDING、SAVED、PENDING、NO CODE、QUEUE FULLを表示
 - 読み取ったコードを視認性の高いFreeSansBold 12ptで表示
 - HTTPS、共有キー、イベントIDによる認証と重複登録防止
-- Scansを履歴の正本として、Inventoryに保有数・状態・製品名・代表画像を表示
+- Scansに在庫履歴を保存し、Inventoryに保有数・状態・製品名・代表画像を表示
 - 未使用、使用中、廃棄済みの状態管理
 - M5Stack SKUの製品名・画像・公式ページをProductMasterへ補完
 - 通常初期化と完全初期化
@@ -78,7 +78,7 @@ Arduino IDE 2.x用のスケッチは[`arduino/M5Stack_Inventory`](arduino/M5Stac
 |---|---|
 | Inventory | コード別の保有数、未使用、使用中、廃棄済み、製品情報、状態変更操作 |
 | ProductMaster | コード、製品名、代表画像URL、参照元URL |
-| Scans | すべての登録・状態変更イベント。集計の正本 |
+| Scans | すべての登録・状態変更イベントを保存し、Inventory集計の基になる履歴 |
 
 Inventoryの数量セルやScansの既存行を直接変更すると、履歴と集計が一致しなくなります。日常の状態変更はInventoryの操作欄を使い、製品名や画像はProductMasterで修正します。
 

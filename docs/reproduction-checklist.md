@@ -5,7 +5,7 @@
 ## 構成を説明できる
 
 - Unit QRCodeのTRIG入力、AtomS3の不揮発キュー、HTTPS送信、Apps Script、Scans、ProductMaster、Inventoryの関係を説明できる。
-- Scansが履歴の正本、Inventoryが再計算された表示、ProductMasterが商品情報であることを区別できる。
+- Scansが在庫履歴、Inventoryが履歴から集計された表示、ProductMasterが商品情報であることを区別できる。
 - 端末の`SAVED`が、HTTP成功だけでなくApps Scriptの書込みと読戻し確認を意味すると説明できる。
 
 ## 同じ環境を作れる
