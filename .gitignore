@@ -1,0 +1,17 @@
+# Local settings and credentials
+.DS_Store
+.env
+.clasp.json
+*.local.json
+secrets.h
+
+# Build and generated output
+.pio/
+**/.pio/
+output/
+**/__pycache__/
+*.py[cod]
+
+# Editor settings
+.vscode/
+.idea/
