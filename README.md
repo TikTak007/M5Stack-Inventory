@@ -1,6 +1,6 @@
 # M5Stack Inventory
 
-Unit QRCodeで読み取ったコードをAtomS3からWi-Fiで送り、Google Sheetsへ在庫履歴と現在庫を記録する個人向け在庫管理システムです。
+M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeで読み取り、AtomS3からWi-Fiで送ってGoogle Sheetsへ在庫履歴と現在庫を記録する個人向け在庫管理システムです。
 
 ![Unit QRCodeからGoogle Sheetsまでの処理フロー](docs/assets/hardware/system-flow.png)
 
@@ -8,7 +8,7 @@ AtomS3のボタンAは使いません。Unit QRCodeのTRIGを押している間�
 
 ## 主な機能
 
-- QRコード・バーコードをUnit QRCodeの公式I2C APIで読み取り
+- M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeの公式I2C APIで読み取り
 - M5Unifiedで本体を制御し、M5GFXのSpriteで128×128画面を一括描画
 - READY、SCANNING、QUEUED、SENDING、SAVED、PENDING、NO CODE、QUEUE FULLを表示
 - 読み取ったコードを視認性の高いFreeSansBold 12ptで表示
