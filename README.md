@@ -2,6 +2,10 @@
 
 M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeで読み取り、AtomS3からWi-Fiで送ってGoogle Sheetsへ在庫履歴と現在庫を記録する個人向け在庫管理システムです。
 
+> [!TIP]
+> **初めて構築する方は、[図解付きの技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)からご覧ください。**
+> システム構成、機器の接続、Google Sheets / Apps Scriptの設定、DEVICE_KEYの作成、端末設定、受入試験までを順番に説明しています。
+
 ![Unit QRCodeからGoogle Sheetsまでの処理フロー](docs/assets/hardware/system-flow.png)
 
 AtomS3のボタンAは使いません。Unit QRCodeのTRIGを押している間だけ読み取り、端末が`SAVED / READY FOR NEXT`を表示した時点で、Apps ScriptがScansへの保存を読み戻して確認済みです。通信できない間は最大16件を端末内へ保存し、同じイベントIDで自動再送します。
