@@ -23,7 +23,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install PlatformIO
-        run: python -m pip install platformio
+        # esptool used by the StickS3 environment imports intelhex at build time.
+        run: python -m pip install platformio intelhex
       - name: Prepare credential-free build settings
         run: cp platformio/include/secrets.example.h platformio/include/secrets.h
       - name: Build firmware environments
