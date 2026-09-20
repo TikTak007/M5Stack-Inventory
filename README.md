@@ -94,6 +94,18 @@ PC上で実際の`InventoryDisplay.h`をM5GFXのSDLバックエンドへ渡し�
 
 手順は[画面キャプチャ生成](tools/display-simulator/README.md)を参照してください。
 
+## 謝辞と第三者ライセンス
+
+本プロジェクトの端末制御と画面描画には、M5Stackの
+[M5Unified](https://github.com/m5stack/M5Unified)と
+[M5GFX](https://github.com/m5stack/M5GFX)を使用しています。
+M5GFXの基盤となったグラフィックスライブラリ
+[LovyanGFX](https://github.com/lovyan03/LovyanGFX)を開発・公開されている
+[lovyan03氏](https://github.com/lovyan03)と、各ライブラリの開発者・貢献者に感謝します。
+
+使用ライブラリ、フォント、ライセンス条件は
+[第三者ソフトウェアに関する表記](THIRD_PARTY_NOTICES.md)を参照してください。
+
 ## テスト
 
 Apps Scriptの受信、重複防止、製品補完、状態遷移、初期化をローカルの模擬Sheets環境で確認します。
@@ -120,5 +132,6 @@ node --test tests/ingest.test.cjs
 - [受信プロトコル](docs/protocol.md)
 - [技術者向け再現チェックリスト](docs/reproduction-checklist.md)
 - [技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)
+- [第三者ソフトウェアに関する表記](THIRD_PARTY_NOTICES.md)
 
 このリポジトリにはライセンスをまだ設定していません。一般公開する前に、公開ライセンスの選択と製品写真の再配布可否を確認してください。
