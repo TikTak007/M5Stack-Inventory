@@ -1,6 +1,6 @@
 # Hardware image sources
 
-`system-flow.png`には、プロジェクト所有者が2026-09-20に提供したAtomS3とUnit QRCodeの製品画像を使用しています。画像はM5Stack公式製品ページに掲載された製品写真を加工したものです。`sticks3-overview.png`とPDFガイドのStickS3画像は、M5Stack公式製品ページの構成画像をPNGへ変換したものです。
+`system-flow.png`には、プロジェクト所有者が2026-09-20に提供したAtomS3とUnit QRCodeの製品画像、およびM5Stack公式製品ページから取得したStickS3画像を使用しています。各画像は説明図に合わせて加工しています。`sticks3-overview.png`とPDFガイドのStickS3画像は、公式製品ページの構成画像をPNGへ変換したものです。
 
 ## Official product pages
 
