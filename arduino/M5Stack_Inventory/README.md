@@ -8,7 +8,7 @@
 - 操作：Unit QRCodeのTRIGを押している間だけ読み取り
 - 通信：2.4GHz Wi-FiからApps Script WebアプリへHTTPS送信
 - 表示：M5Unified + M5GFX Sprite
-- StickS3：このArduino IDE版では未検証。PlatformIOの`sticks3`環境はコンパイル確認のみ
+- StickS3：このArduino IDE版の対象外。PlatformIOの`sticks3` / `sticks3-send-check`を使用し、読取り・Wi-Fi・Google Sheets送信まで実機確認済み
 
 ## 1. Arduino IDEとボードを準備
 

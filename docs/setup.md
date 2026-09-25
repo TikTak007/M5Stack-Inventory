@@ -4,15 +4,15 @@ Google SheetsとApps Scriptを初めて作る場合は、先に[Google Sheets / 
 
 ## 1. 読取りだけ先に確認
 
-1. 電源を外し、Unit QRCodeの切替をI2CにしてAtomS3のGroveへ接続。
+1. 電源を外し、Unit QRCodeの切替をI2CにしてAtomS3またはStickS3のPORT.Aへ接続。
    AtomS3側は黄=G2/SDA、白=G1/SCL。StickS3では黄=G9/SDA、白=G10/SCL。
    ファームウェアはM5UnifiedからPORT.Aピンを取得する。
-2. firmware/include/secrets.example.h を secrets.h にコピー（既存設定がある場合は上書きしない）。
+2. `platformio/include/secrets.example.h`を同じフォルダーの`secrets.h`へコピー（既存設定がある場合は上書きしない）。
    `INVENTORY_CAPTURE_ONLY true` のままビルドし、対象ポートを確認して書き込む。
 3. 読取り切り分け中の `INVENTORY_CAPTURE_ONLY true` でもUnit QRCodeのTRIGを使う。
    TRIGを押している間だけ `SCANNING` になり、箱のコードへ向けて読取り音が鳴ったら離す。
    USBシリアル115200bpsへバイト数・文字種別・不可逆な指紋値だけが出る。
-   コード本文はAtomS3画面に約5秒表示され、初期設定では送信されない。
+   コード本文は端末画面に約5秒表示され、初期設定では送信されない。
 4. 5〜10種類のコードをローカルで確認。シリアル番号や非公開URLはGitや動画へ出さない。
    送信モードでは制御文字・長すぎるコードを拒否するため、実データに合わせて次に調整する。
 
@@ -27,7 +27,7 @@ Google SheetsとApps Scriptを初めて作る場合は、先に[Google Sheets / 
    - プロパティ `SPREADSHEET_ID`：スプレッドシートURLの `/d/` と `/edit` の間の文字列。
      ファイル名やシート名ではない。
    - プロパティ `DEVICE_KEY`：端末からのPOSTだけを受け付けるためのランダムな共有キー。
-     32文字以上で生成し、後でAtomS3側の `INVENTORY_DEVICE_KEY` に同じ値を設定する。
+     32文字以上で生成し、後で端末側の `INVENTORY_DEVICE_KEY` に同じ値を設定する。
    `DEVICE_KEY` をチャット・ソース・動画に貼らない。
 4. エディタから `setup()` を1回実行し、Sheetsアクセスを許可。
    旧形式のScansは状態履歴付き8列へ、Inventoryは画像・状態・操作付き9列へ安全に移行し、ProductMasterを追加する。
@@ -59,16 +59,16 @@ ContentServiceの302/303はgoogleusercontent.comへのGETで取得し、キー�
 secrets.hに2.4GHz Wi-Fi、/exec URL、同じ機器用キー、現在有効な信頼済みルートCAのPEMを設定。
 CAはscript.google.comとscript.googleusercontent.comの両方を検証できるものを使う。
 空のCAは送信に失敗する。証明書検証を無効化しない。時刻同期用のネット接続も必要。
-送信有効の `atoms3-send-check` 環境で再ビルド・書込み。
-`atoms3` は読取り切り分け用のキャプチャーモード、`atoms3-send-check` は実機送信用。
-StickS3のコンパイル検証は `sticks3`。両モードともAtom側ボタンは使わずUnit QRCodeのTRIGで操作する。
+AtomS3は `atoms3-send-check`、StickS3は `sticks3-send-check` で再ビルド・書込み。
+`atoms3` と `sticks3` は読取り切り分け用、名前が `-send-check` で終わる環境は実機送信用。
+どの環境でも本体側ボタンは使わず、Unit QRCodeのTRIGで操作する。
 
 - 画面上部のWi-Fi表示：`ON`は接続済み、`...`は接続中、`OFF`は未接続。
 - `READY`：待機。`SCANNING`：TRIG押下中。`QUEUED`：端末内へ安全に保存済み。
 - `SENDING`：キューの先頭を送信中。HTTPS処理は別タスクなので次の読取りを継続できる。
 - `SAVED`：Apps Scriptが書込み後にScansの対象行を読み戻して確認済み。コードを約5秒表示した後に`READY`へ戻る。
 - `PENDING`：保存確認待ち。同じイベントIDを自動再送する。未確認データは最大16件保持する。
-- `NO CODE`：リーダー音の有無にかかわらず、AtomS3がデコードデータを取得できなかった。
+- `NO CODE`：リーダー音の有無にかかわらず、端末がデコードデータを取得できなかった。
   この表示では在庫イベントを作成しておらず、もう一度読み取る。
 - 未確認中も別商品を読み取れ、最大16件まで端末内へ先に保存する。再起動後も古い順に再試行する。
   16件に達した場合は `QUEUE FULL` を表示し、その読取りは受け付けない。
@@ -96,7 +96,7 @@ Inventory右側の管理欄、または上部の「在庫管理」メニュー�
 - `FULL RESET`：Scans、Inventory、ProductMasterのデータをすべて空にする。
   誤操作防止のため、確認画面へ `完全初期化` と入力した場合だけ実行する。
 
-どちらも列見出し、数式、書式、ボタンは再構成される。実行前にAtomS3が送信完了状態で、
+どちらも列見出し、数式、書式、ボタンは再構成される。実行前に端末が送信完了状態で、
 未送信データが残っていないことを確認する。未送信イベントがあると、初期化後に再登録される。
 初期化は元に戻せないため、必要に応じてGoogle Sheetsのダウンロードでバックアップを保存する。
 

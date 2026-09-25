@@ -17,7 +17,7 @@ static const char INVENTORY_ROOT_CA[] = R"PEM(
 )PEM";
 
 // true: 読取りと画面だけを確認する。false: Wi-Fi送信を有効にする。
-// PlatformIOのatoms3-send-check環境はビルド時にfalseへ上書きする。
+// PlatformIOのatoms3-send-check / sticks3-send-check環境はビルド時にfalseへ上書きする。
 #ifndef INVENTORY_CAPTURE_ONLY
 #define INVENTORY_CAPTURE_ONLY true
 #endif

@@ -1,19 +1,19 @@
 # M5Stack Inventory
 
-M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeで読み取り、AtomS3からWi-Fiで送ってGoogle Sheetsへ在庫履歴と現在庫を記録する個人向け在庫管理システムです。
+M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeで読み取り、AtomS3またはStickS3からWi-Fiで送ってGoogle Sheetsへ在庫履歴と現在庫を記録する個人向け在庫管理システムです。
 
 > [!TIP]
 > **初めて構築する方は、[図解付きの技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)からご覧ください。**
-> システム構成、機器の接続、Google Sheets / Apps Scriptの設定、DEVICE_KEYの作成、端末設定、受入試験までを順番に説明しています。
+> AtomS3 / StickS3のシステム構成と接続、Google Sheets / Apps Scriptの設定、DEVICE_KEYの作成、書込み、受入試験までを順番に説明しています。
 
 ![Unit QRCodeからGoogle Sheetsまでの処理フロー](docs/assets/hardware/system-flow.png)
 
-AtomS3のボタンAは使いません。Unit QRCodeのTRIGを押している間だけ読み取り、端末が`SAVED / READY FOR NEXT`を表示した時点で、Apps ScriptがScansへの保存を読み戻して確認済みです。通信できない間は最大16件を端末内へ保存し、同じイベントIDで自動再送します。
+本体側のボタンは使いません。Unit QRCodeのTRIGを押している間だけ読み取り、端末が`SAVED / READY FOR NEXT`を表示した時点で、Apps ScriptがScansへの保存を読み戻して確認済みです。通信できない間は最大16件を端末内へ保存し、同じイベントIDで自動再送します。
 
 ## 主な機能
 
 - M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeの公式I2C APIで読み取り
-- M5Unifiedで本体を制御し、M5GFXのSpriteで128×128画面を一括描画
+- M5Unifiedで本体を制御し、M5GFXのSpriteを端末の画面サイズに合わせて一括描画
 - READY、SCANNING、QUEUED、SENDING、SAVED、PENDING、NO CODE、QUEUE FULLを表示
 - 読み取ったコードを視認性の高いFreeSansBold 12ptで表示
 - HTTPS、共有キー、イベントIDによる認証と重複登録防止
@@ -21,19 +21,19 @@ AtomS3のボタンAは使いません。Unit QRCodeのTRIGを押している間�
 - 未使用、使用中、廃棄済みの状態管理
 - M5Stack SKUの製品名・画像・公式ページをProductMasterへ補完
 - 通常初期化と完全初期化
-- AtomS3用実装とStickS3移行用ビルド環境
+- AtomS3 / StickS3用の読取り確認環境と実運用環境
 - 実ファームウェアの表示コードを使うPC画面キャプチャ生成
 
 ## 必要なもの
 
 | 種別 | 内容 |
 |---|---|
-| 本体 | M5Stack AtomS3 |
+| 本体 | M5Stack AtomS3、またはStickS3 |
 | リーダー | M5Stack Unit QRCode（SKU: U173） |
 | 接続 | Groveケーブル、USB Type-Cケーブル |
 | ネットワーク | 2.4 GHz Wi-Fi、インターネット接続 |
 | Google | Google SheetsとApps Scriptを利用できるアカウント |
-| 開発 | Arduino IDE 2.x、またはVisual Studio Code + PlatformIO |
+| 開発 | Visual Studio Code + PlatformIO。AtomS3はArduino IDE 2.x版も利用可能 |
 
 ## リポジトリ構成
 
@@ -48,9 +48,9 @@ AtomS3のボタンAは使いません。Unit QRCodeのTRIGを押している間�
 
 ## 導入手順
 
-1. 電源を外し、Unit QRCodeをI2CモードにしてAtomS3のPORT.Aへ接続します。
+1. 電源を外し、Unit QRCodeをI2CモードにしてAtomS3またはStickS3のPORT.Aへ接続します。
 2. [Google Sheets / Apps Scriptセットアップ](docs/apps-script-setup.md)に従い、スプレッドシートとWebアプリを準備します。
-3. 開発環境を選びます。Arduino IDEは[Arduino IDE版スケッチ](arduino/M5Stack_Inventory/README.md)、VS Codeは下記のPlatformIO環境を使います。
+3. 開発環境を選びます。AtomS3は[Arduino IDE版スケッチ](arduino/M5Stack_Inventory/README.md)または下記のPlatformIO環境、StickS3はPlatformIO環境を使います。
 4. 各手順に従って`secrets.h`を作成し、Wi-Fi、WebアプリURL、同じ`DEVICE_KEY`、信頼するルートCAを設定します。
 5. Unit QRCodeのTRIGを押し続け、読取り音が鳴ったら離します。`SAVED / READY FOR NEXT`を確認し、ScansとInventoryを確認します。
 
@@ -63,14 +63,20 @@ AtomS3のボタンAは使いません。Unit QRCodeのTRIGを押している間�
 | `atoms3` | 読取りと表示だけを確認する安全な初期環境 |
 | `atoms3-send-check` | Wi-Fi送信を有効にしたAtomS3実運用環境 |
 | `atoms3-official-qrcode` | Unit QRCodeの公式サンプル相当の診断専用環境 |
-| `sticks3` | 将来のStickS3移行用コンパイル環境 |
+| `sticks3` | StickS3の読取りと表示を確認する環境 |
+| `sticks3-send-check` | Wi-Fi送信を有効にしたStickS3実運用環境 |
 
 `official_qrcode_smoke.cpp`は診断環境だけで使います。通常版と送信版のビルドからは除外されています。
 
 ```sh
 cd platformio
+# AtomS3
 pio run -e atoms3-send-check
+# StickS3
+pio run -e sticks3-send-check
 ```
+
+StickS3では、Unit QRCodeの読取り、Wi-Fi接続、Apps Script経由のGoogle Sheets記録まで実機で確認済みです。
 
 ## Arduino IDE環境
 

@@ -1,6 +1,6 @@
 # Google Sheets / Apps Scriptセットアップ
 
-この手順では、Google Sheetsを非公開の在庫台帳として作成し、AtomS3から受信するApps Script Webアプリを設定します。秘密値はApps Scriptのスクリプトプロパティと端末の`secrets.h`だけに保存します。
+この手順では、Google Sheetsを非公開の在庫台帳として作成し、AtomS3またはStickS3から受信するApps Script Webアプリを設定します。秘密値はApps Scriptのスクリプトプロパティと端末の`secrets.h`だけに保存します。
 
 ## 0. 前提とファイル配置
 
@@ -8,7 +8,7 @@
 
 | 用途 | ファイル |
 |---|---|
-| AtomS3ファームウェア | `platformio/` |
+| AtomS3 / StickS3ファームウェア | `platformio/` |
 | PlatformIO設定 | `platformio/platformio.ini` |
 | 端末設定のひな形 | `platformio/include/secrets.example.h` |
 | Arduino IDE版 | `arduino/M5Stack_Inventory/` |
@@ -16,7 +16,7 @@
 | Apps Scriptマニフェスト | `apps-script/appsscript.json` |
 | 受信プロトコル | `docs/protocol.md` |
 
-ファームウェアの主要バージョンは`platformio.ini`へ固定されています。AtomS3送信用環境は`atoms3-send-check`、読取り切り分け用は`atoms3`、StickS3はコンパイル確認用の`sticks3`です。
+ファームウェアの主要バージョンは`platformio.ini`へ固定されています。AtomS3は`atoms3`と`atoms3-send-check`、StickS3は`sticks3`と`sticks3-send-check`を使い、後者がWi-Fi送信を有効にした実運用環境です。
 
 ## 1. スプレッドシートを作る
 
@@ -80,7 +80,7 @@ $rng.Dispose()
 
 どちらの方法でも出力は`0-9`と`a-f`だけで構成された64文字です。文字数や文字種が違う場合は、値を手で修正せず再生成します。Web上のランダム文字列生成サイトは、秘密値が外部へ送信される可能性があるため使用しません。
 
-同じ`DEVICE_KEY`を後でAtomS3側の`INVENTORY_DEVICE_KEY`にも設定します。Google側と端末側の値が1文字でも違うと`UNAUTHORIZED`になります。
+同じ`DEVICE_KEY`を後で端末側の`INVENTORY_DEVICE_KEY`にも設定します。Google側と端末側の値が1文字でも違うと`UNAUTHORIZED`になります。
 
 ## 4. 初期セットアップを実行する
 
@@ -118,7 +118,7 @@ $rng.Dispose()
 
 コードを変更した場合は、`デプロイを管理`で既存デプロイを編集し、新しいバージョンを選んで更新します。既存デプロイを更新すれば通常は同じ`/exec` URLを継続できます。エディタで保存しただけでは公開中のWebアプリへ反映されません。
 
-## 6. AtomS3へ接続情報を設定する
+## 6. 端末へ接続情報を設定する
 
 1. PlatformIOでは`platformio/include/secrets.example.h`を同じフォルダーの`secrets.h`へコピーします。Arduino IDEでは`arduino/M5Stack_Inventory/secrets.example.h`を同じスケッチフォルダーの`secrets.h`へコピーします。
 2. 次の値を設定します。
@@ -131,7 +131,7 @@ $rng.Dispose()
 ```
 
 3. `script.google.com`と`script.googleusercontent.com`を検証できる現在有効なルートCAを`INVENTORY_ROOT_CA`へ設定します。確認方法は次項に示します。
-4. PlatformIOは`atoms3-send-check`環境、Arduino IDEは`M5AtomS3`ボードと`USB CDC On Boot: Enabled`を選び、AtomS3へ書き込みます。Arduino IDE側のボードパッケージとライブラリのバージョンは[Arduino IDE手順](../arduino/M5Stack_Inventory/README.md)に固定値を記載しています。
+4. PlatformIOはAtomS3なら`atoms3-send-check`、StickS3なら`sticks3-send-check`を選びます。Arduino IDE版は`M5AtomS3`ボードと`USB CDC On Boot: Enabled`を選び、AtomS3へ書き込みます。Arduino IDE側のボードパッケージとライブラリのバージョンは[Arduino IDE手順](../arduino/M5Stack_Inventory/README.md)に固定値を記載しています。
 
 ![secrets.hに設定する値](assets/setup/05-secrets-h-guide.png)
 
@@ -154,10 +154,23 @@ openssl s_client -connect script.googleusercontent.com:443 -servername script.go
 
 PlatformIO Coreを利用できるターミナルで実行します。VS CodeのPlatformIOボタンを使う場合も、選択する環境は同じです。
 
+接続している機種に対応する一方だけを実行します。
+
+AtomS3:
+
 ```sh
 cd platformio
 pio run -e atoms3-send-check
 pio run -e atoms3-send-check -t upload
+pio device monitor -b 115200
+```
+
+StickS3:
+
+```sh
+cd platformio
+pio run -e sticks3-send-check
+pio run -e sticks3-send-check -t upload
 pio device monitor -b 115200
 ```
 
@@ -174,7 +187,7 @@ pio device monitor -b 115200
 
 ## 7. 最初の1件を確認する
 
-1. AtomS3の上部表示がWi-Fi `ON`、中央が`READY`になるまで待ちます。
+1. 端末の上部表示がWi-Fi `ON`、中央が`READY`になるまで待ちます。
 2. Unit QRCodeのTRIGを押したままコードへ向けます。
 3. 読取り音が鳴ったらTRIGを離します。
 4. `QUEUED`、`SENDING`、`SAVED / READY FOR NEXT`の順に進むことを確認します。
@@ -202,7 +215,7 @@ pio device monitor -b 115200
 ```sh
 node --test tests/ingest.test.cjs
 cd platformio
-pio run -e atoms3 -e atoms3-send-check -e sticks3
+pio run -e atoms3 -e atoms3-send-check -e sticks3 -e sticks3-send-check
 ```
 
 実機では次の順に確認します。
@@ -215,7 +228,7 @@ pio run -e atoms3 -e atoms3-send-check -e sticks3
 6. Sheetsをブラウザで閉じた状態でも、Webアプリ経由で追加される。
 7. M5Stack以外のコードや公式検索に失敗したコードは、ProductMasterのB〜D列を手動補完できる。
 
-本実装は個人の少量データを対象としています。重複確認はScansの履歴全体を参照するため、大量履歴の性能は未検証です。StickS3はコンパイル確認までで、実機動作は未検証です。Google Workspaceの匿名Webアプリ公開、Apps ScriptやSheetsのクォータも導入先で確認してください。
+本実装は個人の少量データを対象としています。重複確認はScansの履歴全体を参照するため、大量履歴の性能は未検証です。StickS3はUnit QRCodeの読取り、Wi-Fi接続、Google Sheetsへの実送信を実機確認済みです。画面レイアウトは使用する端末で最終確認してください。Google Workspaceの匿名Webアプリ公開、Apps ScriptやSheetsのクォータも導入先で確認してください。
 
 ## 更新・キー交換
 
