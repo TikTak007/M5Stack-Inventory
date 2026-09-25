@@ -4,7 +4,7 @@
 
 ## 構成を説明できる
 
-- Unit QRCodeのTRIG入力、AtomS3の不揮発キュー、HTTPS送信、Apps Script、Scans、ProductMaster、Inventoryの関係を説明できる。
+- Unit QRCodeのTRIG入力、端末の不揮発キュー、HTTPS送信、Apps Script、Scans、ProductMaster、Inventoryの関係を説明できる。
 - Scansが在庫履歴、Inventoryが履歴から集計された表示、ProductMasterが商品情報であることを区別できる。
 - 端末の`SAVED`が、HTTP成功だけでなくApps Scriptの書込みと読戻し確認を意味すると説明できる。
 
@@ -15,7 +15,7 @@
 - macOS / LinuxではOpenSSL、Windowsでは標準PowerShellを使って`DEVICE_KEY`を生成し、Apps Scriptと`secrets.h`へ同じ値を設定できる。
 - `/exec` URLを発行し、GETの死活応答を確認できる。
 - 両Googleホストの証明書チェーンを確認し、信頼済みルートCAをPEMで設定できる。
-- `atoms3-send-check`をビルド、書込みし、115200 bpsのログを確認できる。
+- AtomS3は`atoms3-send-check`、StickS3は`sticks3-send-check`をビルド、書込みし、115200 bpsのログを確認できる。
 
 ## 保存仕様を検証できる
 
@@ -28,5 +28,5 @@
 
 - 数量セルやScansの既存行を直接編集せず、状態変更と初期化機能を使える。
 - 商品情報の自動取得に失敗した場合、ProductMasterを手動補完できる。
-- 個人の少量データ向けであり、大量履歴の性能とStickS3実機は未検証だと分かる。
+- 個人の少量データ向けであり、大量履歴の性能は未検証だと分かる。
 - 公開前に`secrets.h`、実際のキー、Wi-Fi情報、デプロイURLを除外し、製品写真の再配布条件とライセンスを確認できる。

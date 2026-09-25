@@ -28,4 +28,4 @@ jobs:
       - name: Prepare credential-free build settings
         run: cp platformio/include/secrets.example.h platformio/include/secrets.h
       - name: Build firmware environments
-        run: pio run -d platformio -e atoms3 -e atoms3-send-check -e atoms3-official-qrcode -e sticks3
+        run: pio run -d platformio -e atoms3 -e atoms3-send-check -e atoms3-official-qrcode -e sticks3 -e sticks3-send-check
