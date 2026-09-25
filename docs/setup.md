@@ -64,6 +64,7 @@ AtomS3は `atoms3-send-check`、StickS3は `sticks3-send-check` で再ビルド�
 どの環境でも本体側ボタンは使わず、Unit QRCodeのTRIGで操作する。
 
 - 画面上部のWi-Fi表示：`ON`は接続済み、`...`は接続中、`OFF`は未接続。
+- StickS3はWi-Fi表示の右に電池残量（％）を表示する。値はM5Unifiedから約10秒ごとに取得し、取得できない場合は`--%`と表示する。AtomS3には電池表示を出さない。
 - `READY`：待機。`SCANNING`：TRIG押下中。`QUEUED`：端末内へ安全に保存済み。
 - `SENDING`：キューの先頭を送信中。HTTPS処理は別タスクなので次の読取りを継続できる。
 - `SAVED`：Apps Scriptが書込み後にScansの対象行を読み戻して確認済み。コードを約5秒表示した後に`READY`へ戻る。
