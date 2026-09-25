@@ -42,6 +42,10 @@ void capture(InventoryDisplay& display, const std::filesystem::path& dir,
   InventoryView view;
   view.screen = screen;
   view.wifi = wifi;
+#if defined(INVENTORY_SIMULATE_STICKS3)
+  view.hasBattery = true;
+  view.batteryPercent = 82;
+#endif
   view.code = code;
   view.detail = detail;
   view.phase = phase;
@@ -62,7 +66,7 @@ int user_func(bool* running) {
   M5.Display.init();
   InventoryDisplay display;
   if (!display.begin()) {
-    std::cerr << "Could not create the 128x128 display sprite.\n";
+    std::cerr << "Could not create the display sprite.\n";
     *running = false;
     return 1;
   }

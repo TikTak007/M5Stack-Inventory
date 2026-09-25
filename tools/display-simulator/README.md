@@ -1,8 +1,10 @@
-# AtomS3 display simulator
+# AtomS3 / StickS3 display simulator
 
 This host tool renders the production `InventoryDisplay.h` with M5GFX's SDL
 backend. The generated 128 x 128 captures use the same drawing primitives,
 positions, colors, fonts, and text as the firmware.
+The `sticks3_arm` environment generates 135 x 240 captures with an example
+battery level of 82% so the StickS3 header can be reviewed before flashing.
 
 ## macOS
 
@@ -19,6 +21,10 @@ INVENTORY_CAPTURE_DIR="$(cd ../../docs/assets/display && pwd)" \
   SDL_VIDEODRIVER=dummy .pio/build/native_arm/program
 python3 convert_captures.py ../../docs/assets/display
 ```
+
+For StickS3 previews, replace `native_arm` with `sticks3_arm` and set
+`INVENTORY_CAPTURE_DIR` to a separate output folder. The captured battery
+percentage is a simulator fixture; the device reads its value from M5Unified.
 
 Intel macOS can use `-e native` and `.pio/build/native/program`.
 

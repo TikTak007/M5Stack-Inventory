@@ -31,6 +31,9 @@ constexpr uint32_t kWifiRetryMs = 10000;
 constexpr uint32_t kPendingRetryMs = 10000;
 constexpr uint32_t kNextQueueSendDelayMs = 800;
 constexpr uint32_t kScannerPollMs = 10;
+constexpr uint32_t kScannerStartupRetryMs = 400;
+constexpr uint8_t kScannerStartupAttempts = 10;
+constexpr uint32_t kBatteryRefreshMs = 10000;
 constexpr uint32_t kAnimationMs = 180;
 constexpr uint32_t kCountdownRefreshMs = 250;
 constexpr time_t kMinimumValidTime = 1700000000;
@@ -78,6 +81,7 @@ uint32_t lastRenderAt = 0;
 uint32_t lastScannerPollAt = 0;
 uint32_t lastWifiAttemptAt = 0;
 uint32_t nextPendingRetryAt = 0;
+uint32_t lastBatterySampleAt = 0;
 uint8_t animationPhase = 0;
 uint8_t lastTriggerKey = 1;
 bool triggerKeyKnown = false;
@@ -85,6 +89,8 @@ bool triggerHeld = false;
 bool scanHandledForPress = false;
 bool ntpStarted = false;
 WifiVisualState renderedWifi = WifiVisualState::offline;
+bool batterySupported = false;
+int16_t batteryPercent = -1;
 
 // コード本文をシリアルへ出さず、長さ・種類・不可逆な指紋だけを診断出力する。
 void printCaptureMetadata(const uint8_t* data, uint16_t length) {
@@ -120,6 +126,8 @@ bool transportReady() {
 void renderCurrent(bool force = false) {
   const uint32_t now = millis();
   view.wifi = wifiVisualState();
+  view.hasBattery = batterySupported;
+  view.batteryPercent = batteryPercent;
   if (view.screen == InventoryScreen::saved || view.screen == InventoryScreen::captured) {
     const uint32_t elapsed = now - screenStartedAt;
     view.remainingMs = elapsed >= kResultHoldMs ? 0 : kResultHoldMs - elapsed;
@@ -280,6 +288,18 @@ void serviceWifi() {
   }
 
   if (wifiVisualState() != renderedWifi) renderCurrent(true);
+}
+
+// 電池残量はPMICから低頻度で取得し、値が変わったときだけ画面を更新する。
+void serviceBattery() {
+  if (!batterySupported || millis() - lastBatterySampleAt < kBatteryRefreshMs) return;
+  lastBatterySampleAt = millis();
+  const int32_t level = M5.Power.getBatteryLevel();
+  const int16_t next = level < 0 ? -1 : level > 100 ? 100 : level;
+  if (next != batteryPercent) {
+    batteryPercent = next;
+    renderCurrent(true);
+  }
 }
 
 // Apps Script応答が同じeventIdの保存確認を含むか厳密に判定する。
@@ -560,6 +580,20 @@ void setup() {
   config.output_power = true;
   M5.begin(config);
   Serial.begin(115200);
+  batterySupported = M5.getBoard() == m5::board_t::board_M5StickS3;
+  if (batterySupported) {
+    const int32_t level = M5.Power.getBatteryLevel();
+    batteryPercent = level < 0 ? -1 : level > 100 ? 100 : level;
+    lastBatterySampleAt = millis();
+  }
+  bool externalPower = M5.Power.getExtOutput();
+  Serial.printf("PORT.A external power after startup: %s\n", externalPower ? "ON" : "OFF");
+  if (!externalPower) {
+    M5.Power.setExtOutput(true);
+    delay(200);
+    externalPower = M5.Power.getExtOutput();
+    Serial.printf("PORT.A external power after retry: %s\n", externalPower ? "ON" : "OFF");
+  }
 
   if (!inventoryDisplay.begin()) Serial.println("Display sprite allocation failed");
   showScreen(InventoryScreen::boot);
@@ -584,10 +618,28 @@ void setup() {
   const int8_t sda = M5.getPin(m5::pin_name_t::port_a_sda);
   const int8_t scl = M5.getPin(m5::pin_name_t::port_a_scl);
   Serial.printf("PORT.A I2C pins: SDA=%d SCL=%d\n", sda, scl);
-  if (!scanner.begin(&Wire, UNIT_QRCODE_ADDR, sda, scl, 100000U)) {
+  bool scannerReady = scanner.begin(&Wire, UNIT_QRCODE_ADDR, sda, scl, 100000U);
+  // 外部5Vの立ち上がりが遅い場合、最初のI2C応答だけで故障と判定しない。
+  for (uint8_t attempt = 1; !scannerReady && attempt < kScannerStartupAttempts; ++attempt) {
+    delay(kScannerStartupRetryMs);
+    Wire.beginTransmission(UNIT_QRCODE_ADDR);
+    const uint8_t i2cStatus = Wire.endTransmission();
+    scannerReady = i2cStatus == 0;
+    Serial.printf("QR reader startup probe %u/%u: I2C status=%u\n",
+                  attempt + 1, kScannerStartupAttempts, i2cStatus);
+  }
+  if (!scannerReady) {
+    Serial.print("PORT.A responding I2C addresses:");
+    for (uint8_t address = 0x08; address <= 0x77; ++address) {
+      Wire.beginTransmission(address);
+      if (Wire.endTransmission() == 0) Serial.printf(" 0x%02X", address);
+    }
+    Serial.println();
+    Serial.println("QR reader unavailable on PORT.A; check Grove cable and I2C mode");
     showScreen(InventoryScreen::error, "", "QR READER");
     while (true) delay(100);
   }
+  Serial.println("QR reader ready");
   Wire.setBufferSize(512);
   scanner.setTriggerMode(MANUAL_SCAN_MODE);
   scanner.setDecodeTrigger(false);
@@ -610,6 +662,7 @@ void setup() {
 
 void loop() {
   serviceWifi();
+  serviceBattery();
   pollScanner();
   serviceSendResult();
   startNextSend();

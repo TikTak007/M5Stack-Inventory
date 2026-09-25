@@ -1,6 +1,8 @@
 #pragma once
 
 #include <M5Unified.h>
+#include <cstdio>
+#include <cstring>
 
 /*
  * AtomS3 / StickS3共通の画面描画。
@@ -31,6 +33,8 @@ enum class InventoryScreen {
 struct InventoryView {
   InventoryScreen screen = InventoryScreen::boot;
   WifiVisualState wifi = WifiVisualState::offline;
+  bool hasBattery = false;
+  int16_t batteryPercent = -1;
   String code;
   String detail;
   uint8_t phase = 0;
@@ -58,7 +62,7 @@ class InventoryDisplay {
   void render(const InventoryView& view) {
     if (!ready_) return;
 
-    beginFrame(view.wifi, accentFor(view.screen));
+    beginFrame(view, accentFor(view.screen));
     switch (view.screen) {
       case InventoryScreen::boot:
         drawActivityIcon(accentFor(view.screen), view.phase);
@@ -136,7 +140,7 @@ class InventoryDisplay {
     }
   }
 
-  void beginFrame(WifiVisualState wifi, uint16_t accent) {
+  void beginFrame(const InventoryView& view, uint16_t accent) {
     const int16_t width = sprite_.width();
     const int16_t height = sprite_.height();
     const int16_t headerHeight = height >= 180 ? 27 : 21;
@@ -155,15 +159,16 @@ class InventoryDisplay {
     sprite_.setTextSize(1);
     sprite_.setTextDatum(middle_left);
     sprite_.setTextColor(rgb(232, 242, 250), header);
-    sprite_.drawString("KVS STOCK", 6, headerHeight / 2 - 1);
-    drawWifiBadge(wifi, headerHeight);
+    sprite_.drawString(view.hasBattery ? "KVS" : "KVS STOCK", 6, headerHeight / 2 - 1);
+    drawWifiBadge(view.wifi, headerHeight, view.hasBattery);
+    if (view.hasBattery) drawBatteryBadge(view.batteryPercent, headerHeight);
     sprite_.setTextDatum(middle_center);
   }
 
-  void drawWifiBadge(WifiVisualState state, int16_t headerHeight) {
+  void drawWifiBadge(WifiVisualState state, int16_t headerHeight, bool hasBattery) {
     const int16_t width = sprite_.width();
-    const int16_t boxWidth = 42;
-    const int16_t x = width - boxWidth - 4;
+    const int16_t boxWidth = hasBattery ? 38 : 42;
+    const int16_t x = hasBattery ? width - 94 : width - boxWidth - 4;
     const int16_t y = 3;
     const int16_t boxHeight = headerHeight - 7;
     const uint16_t badge = rgb(14, 35, 51);
@@ -184,6 +189,36 @@ class InventoryDisplay {
                            : state == WifiVisualState::connecting ? "..." : "OFF",
                        x + boxWidth - 5, y + boxHeight / 2);
     sprite_.setTextDatum(middle_center);
+  }
+
+  // StickS3では残量の数字を電池の輪郭内に置き、狭いヘッダーでも一目で読めるようにする。
+  void drawBatteryBadge(int16_t percent, int16_t headerHeight) {
+    const int16_t x = sprite_.width() - 50;
+    const int16_t y = (headerHeight - 17) / 2;
+    const uint16_t color = percent < 0 ? rgb(99, 119, 137)
+                           : percent <= 15 ? rgb(255, 83, 112)
+                           : percent <= 30 ? rgb(255, 184, 76)
+                                           : rgb(42, 231, 166);
+    const uint16_t fill = percent <= 15 ? rgb(55, 28, 42)
+                          : percent <= 30 ? rgb(58, 45, 30)
+                                          : rgb(14, 54, 52);
+    sprite_.fillRoundRect(x, y, 43, 17, 3, rgb(14, 35, 51));
+    if (percent > 0) {
+      const int16_t level = static_cast<int32_t>(39) * (percent > 100 ? 100 : percent) / 100;
+      sprite_.fillRect(x + 2, y + 2, level, 13, fill);
+    }
+    sprite_.drawRoundRect(x, y, 43, 17, 3, color);
+    sprite_.fillRect(x + 43, y + 5, 3, 7, color);
+    char label[6];
+    if (percent < 0) {
+      snprintf(label, sizeof(label), "--%%");
+    } else {
+      snprintf(label, sizeof(label), "%d%%", percent > 100 ? 100 : percent);
+    }
+    sprite_.setFont(&fonts::efontJA_10_b);
+    sprite_.setTextDatum(middle_center);
+    sprite_.setTextColor(rgb(242, 248, 252));
+    sprite_.drawString(label, x + 21, y + 8);
   }
 
   // 128px画面ではコード表示と重ならない位置へ状態文言を寄せる。

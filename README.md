@@ -102,6 +102,14 @@ PC上で実際の`InventoryDisplay.h`をM5GFXのSDLバックエンドへ渡し�
 |---|---|---|---|---|
 | ![READY](docs/assets/display/ready.png) | ![SCANNING](docs/assets/display/scanning.png) | ![QUEUED](docs/assets/display/queued.png) | ![SENDING](docs/assets/display/sending.png) | ![SAVED](docs/assets/display/saved.png) |
 
+上の画面例はAtomS3です。StickS3は右上のWi-Fi表示の右に電池残量を表示します。次の82%はシミュレーターの例で、実機ではM5Unifiedから残量を取得します。取得できない場合は`--%`を表示します。
+
+| StickS3 READY | StickS3 SAVED | StickS3 PENDING |
+|---|---|---|
+| ![StickS3 READY](docs/assets/display-sticks3/ready.png) | ![StickS3 SAVED](docs/assets/display-sticks3/saved.png) | ![StickS3 PENDING](docs/assets/display-sticks3/pending.png) |
+
+StickS3の画面構成は[技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)の最終ページにも掲載しています。
+
 手順は[画面キャプチャ生成](tools/display-simulator/README.md)を参照してください。
 
 ## 謝辞と第三者ライセンス
