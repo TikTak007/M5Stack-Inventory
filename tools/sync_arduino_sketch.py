@@ -18,6 +18,8 @@ def expected_files() -> dict[Path, bytes]:
         SKETCH / "InventoryDisplay.h": (
             FIRMWARE / "include" / "InventoryDisplay.h"
         ).read_bytes(),
+        SKETCH / "SaveStatus.h": (FIRMWARE / "include" / "SaveStatus.h").read_bytes(),
+        SKETCH / "DurableOutbox.h": (FIRMWARE / "include" / "DurableOutbox.h").read_bytes(),
         SKETCH / "secrets.example.h": (
             FIRMWARE / "include" / "secrets.example.h"
         ).read_bytes(),

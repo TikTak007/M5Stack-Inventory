@@ -1,14 +1,15 @@
 # Arduino IDE版
 
-このフォルダーは、PlatformIO版と同じAtomS3ファームウェアをArduino IDEでビルドするためのスケッチです。`M5Stack_Inventory.ino`と`InventoryDisplay.h`はPlatformIO版から生成されます。
+AtomS3またはStickS3とUnit QRCodeを使う在庫管理スケッチです。PlatformIO版と同じ読取り・保存確認・画面表示を使います。フォルダー全体をコピーしてArduino IDEで開いてください。
 
 ## 対応範囲
 
-- 対象：M5Stack AtomS3 + Unit QRCode（SKU: U173、I2Cモード）
+- 対象：M5Stack AtomS3またはStickS3 + Unit QRCode（SKU: U173、I2Cモード）
 - 操作：Unit QRCodeのTRIGを押している間だけ読み取り
 - 通信：2.4GHz Wi-FiからApps Script WebアプリへHTTPS送信
 - 表示：M5Unified + M5GFX Sprite
-- StickS3：このArduino IDE版の対象外。PlatformIOの`sticks3` / `sticks3-send-check`を使用し、読取り・Wi-Fi・Google Sheets送信まで実機確認済み
+- PORT.Aピンと画面サイズはM5Unifiedから取得し、機種に合わせて表示する
+- 機種・開発環境ごとの今回のビルドと実機確認は[検証記録](../../docs/reproduction-checklist.md)を参照
 
 ## 1. Arduino IDEとボードを準備
 
@@ -20,7 +21,7 @@
    ```
 
 3. ボードマネージャから`M5Stack`をインストールします。
-4. `ツール` → `ボード`で`M5AtomS3`を選択します。
+4. `ツール` → `ボード`で接続する機種に対応するボードを選択します。AtomS3は`M5AtomS3`です。StickS3の選択・書込みはインストールしたM5Stackボードパッケージの対応を確認してください。
 5. `USB CDC On Boot`を`Enabled`、シリアルモニタを`115200 bps`にします。
 
 検証済みボードパッケージは`M5Stack 3.3.7`です。
@@ -55,11 +56,15 @@ Arduino IDEの`ツール` → `ライブラリを管理`から次をインスト
 
 ## 4. 検証と書込み
 
-1. AtomS3をUSBで接続し、対応するポートを選択します。
+1. 対象のAtomS3またはStickS3をUSBで接続し、機種と対応するポートを選択します。
 2. `スケッチ` → `検証・コンパイル`を実行します。
 3. エラーがなければ`マイコンボードに書き込む`を実行します。
 4. シリアルモニタを115200 bpsで開き、`PORT.A I2C pins`、Wi-Fi接続、送信結果を確認します。
-5. Unit QRCodeのTRIGを押し、`SAVED / READY FOR NEXT`とSheetsへの1件追加を確認します。
+5. Unit QRCodeのTRIGを押し、対象コードと`SAVED`を確認します。Scansへの1件追加とInventoryの集計は別に確認します。
+
+`UNSENT n`は送信中も含む未確認件数、`READY`は次の受付可能、`SAVED`は表示中の1件のScans保存確認、`ALL SAVED`は端末の全件完了です。通信断でも最大16件を電源再投入後まで保持し、復旧後に同じイベントIDで再送します。`2/5 SAVED`の分母は再送開始時の件数に固定し、途中の追加読取りは後続の対象になります。
+
+`STORAGE FULL / 16/16`では今回の読取りを受け付けていません。空きができてから再スキャンしてください。`LOCAL STORAGE`では端末内保存済みと扱いません。リーダー音だけでは受付成功を判断できません。
 
 ## よくある問題
 
@@ -70,7 +75,7 @@ Arduino IDEの`ツール` → `ライブラリを管理`から次をインスト
 | シリアルポートが表示されない | `USB CDC On Boot`とUSBケーブル、ダウンロードモードを確認 |
 | 読取りだけで送信されない | `INVENTORY_CAPTURE_ONLY`が`false`か |
 | `UNAUTHORIZED` | Google側と`secrets.h`の`DEVICE_KEY`が一致するか |
-| `PENDING`が続く | Wi-Fi、`/exec` URL、ルートCA、Apps Script実行履歴を確認 |
+| `UNSENT`が減らない | Wi-Fi、`/exec` URL、ルートCA、Apps Script実行履歴を確認 |
 
 ## PlatformIO版と内容を揃える
 
@@ -81,4 +86,4 @@ python3 tools/sync_arduino_sketch.py
 python3 tools/sync_arduino_sketch.py --check
 ```
 
-両方の開発環境へ同じ変更を反映するため、通常はPlatformIO版を編集してからこの処理を実行します。
+`M5Stack_Inventory.ino`、`InventoryDisplay.h`、`SaveStatus.h`、`DurableOutbox.h`を含む動作部分を同期します。両環境へ同じ修正を反映する場合はPlatformIO版を編集してから同期してください。

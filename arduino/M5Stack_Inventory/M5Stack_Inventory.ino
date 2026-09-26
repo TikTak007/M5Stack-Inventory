@@ -12,6 +12,8 @@
 #include <M5Unified.h>
 #include <M5UnitQRCode.h>
 #include "InventoryDisplay.h"
+#include "SaveStatus.h"
+#include "DurableOutbox.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -75,6 +77,9 @@ struct SendResult {
 QueueHandle_t sendJobs = nullptr;
 QueueHandle_t sendResults = nullptr;
 bool sendInFlight = false;
+ScanSavePresentation presentation;
+String foregroundEventId;
+String sendError;
 
 uint32_t screenStartedAt = 0;
 uint32_t lastRenderAt = 0;
@@ -126,6 +131,9 @@ bool transportReady() {
 void renderCurrent(bool force = false) {
   const uint32_t now = millis();
   view.wifi = wifiVisualState();
+  view.unsent = outboxCount;
+  view.batchTotal = presentation.batch.total;
+  view.batchSaved = presentation.batch.saved;
   view.hasBattery = batterySupported;
   view.batteryPercent = batteryPercent;
   if (view.screen == InventoryScreen::saved || view.screen == InventoryScreen::captured) {
@@ -152,6 +160,7 @@ void showScreen(InventoryScreen screen, const String& code = "", const String& d
 
 void showReady() {
   currentCode = "";
+  presentation.ready(outboxCount, sendInFlight);
   showScreen(InventoryScreen::ready);
   Serial.println("Ready: hold QR TRIG to scan");
 }
@@ -180,65 +189,24 @@ String eventIdFromPayload(const String& payload) {
   return request["eventId"].as<String>();
 }
 
-String outboxKey(uint8_t slot) {
-  char key[4];
-  snprintf(key, sizeof(key), "q%02u", slot);
-  return String(key);
-}
-
-uint16_t outboxMetadata(uint8_t head, uint8_t count) {
-  return static_cast<uint16_t>(head) | (static_cast<uint16_t>(count) << 8);
-}
-
-bool saveOutboxMetadata(uint8_t head, uint8_t count) {
-  return storage.putUShort("qm", outboxMetadata(head, count)) == sizeof(uint16_t);
-}
-
 String& outboxFront() {
   return outbox[outboxHead];
 }
 
 // 読取りイベントをNVSへ保存してからRAM上のFIFOへ反映する。
 bool enqueueOutbox(const String& payload) {
-  if (!payload.length() || payload.length() >= kPayloadCapacity || outboxCount >= kOutboxCapacity)
-    return false;
-  const uint8_t slot = (outboxHead + outboxCount) % kOutboxCapacity;
-  const String key = outboxKey(slot);
-  if (storage.putString(key.c_str(), payload) != payload.length()) return false;
-  if (!saveOutboxMetadata(outboxHead, outboxCount + 1)) {
-    storage.remove(key.c_str());
-    return false;
-  }
-  outbox[slot] = payload;
-  ++outboxCount;
-  return true;
+  return appendDurableOutbox(outbox, outboxHead, outboxCount, payload,
+                             kOutboxCapacity, kPayloadCapacity, storage);
 }
 
 // サーバー保存確認後だけ先頭イベントを削除する。
 bool dequeueOutbox() {
-  if (!outboxCount) return false;
-  const uint8_t oldHead = outboxHead;
-  const uint8_t newHead = (outboxHead + 1) % kOutboxCapacity;
-  const uint8_t newCount = outboxCount - 1;
-  if (!saveOutboxMetadata(newHead, newCount)) return false;
-  outboxHead = newHead;
-  outboxCount = newCount;
-  outbox[oldHead] = "";
-  storage.remove(outboxKey(oldHead).c_str());
-  return true;
+  return removeDurableOutbox(outbox, outboxHead, outboxCount, kOutboxCapacity, storage);
 }
 
 // 起動時にNVSから未送信イベントを復元し、旧単一イベント形式も移行する。
 bool loadOutbox() {
-  const uint16_t metadata = storage.getUShort("qm", 0);
-  outboxHead = metadata & 0xff;
-  outboxCount = metadata >> 8;
-  if (outboxHead >= kOutboxCapacity || outboxCount > kOutboxCapacity) return false;
-  for (uint8_t i = 0; i < outboxCount; ++i) {
-    const uint8_t slot = (outboxHead + i) % kOutboxCapacity;
-    outbox[slot] = storage.getString(outboxKey(slot).c_str(), "");
-    if (!outbox[slot].length()) return false;
-  }
+  if (!restoreDurableOutbox(outbox, outboxHead, outboxCount, kOutboxCapacity, storage)) return false;
 
   // 旧版の単一pending形式も、未確認イベントを失わずFIFOへ移行する。
   const String legacy = storage.getString("pending", "");
@@ -255,12 +223,14 @@ bool loadOutbox() {
   return true;
 }
 
-String queueDetail(const char* suffix) {
-  String detail = "Q";
-  detail += outboxCount;
-  detail += " ";
-  detail += suffix;
-  return detail;
+// Background transfers never replace a fresh read or rejected scan result.
+bool foregroundOwnsDisplay() {
+  return presentation.ownsDisplay(view.screen == InventoryScreen::scanning, millis(), kResultHoldMs);
+}
+
+void showForeground(InventoryScreen screen, const String& code = "", const String& detail = "") {
+  presentation.holdForeground(millis());
+  showScreen(screen, code, detail);
 }
 
 void beginWifi() {
@@ -304,16 +274,10 @@ void serviceBattery() {
 
 // Apps Script応答が同じeventIdの保存確認を含むか厳密に判定する。
 ReplyState replyState(int httpCode, const String& reply, const String& eventId) {
-  if (httpCode != 200) return ReplyState::invalid;
   JsonDocument response;
-  if (deserializeJson(response, reply) || !response["ok"].is<bool>() ||
-      !response["ok"].as<bool>() || response["eventId"].as<String>() != eventId ||
-      !response["duplicate"].is<bool>()) return ReplyState::invalid;
-  // verifiedは今回の書込み確認、duplicateは同じイベントが既に保存済みであることを示す。
-  // どちらもeventIdが一致した場合だけ端末側のイベントを完了扱いにする。
-  const bool verified = response["verified"].is<bool>() && response["verified"].as<bool>();
-  return verified || response["duplicate"].as<bool>() ? ReplyState::storageVerified
-                                                       : ReplyState::invalid;
+  if (deserializeJson(response, reply)) return ReplyState::invalid;
+  return isVerifiedSaveAckJson(httpCode, response, eventId.c_str())
+    ? ReplyState::storageVerified : ReplyState::invalid;
 }
 
 // Apps Script特有のPOSTリダイレクトをたどり、ContentServiceのJSONを取得する。
@@ -397,8 +361,10 @@ void networkWorker(void*) {
 }
 
 void showPending(const char* suffix) {
-  currentCode = outboxCount ? codeFromPayload(outboxFront()) : "";
-  showScreen(InventoryScreen::pending, currentCode, queueDetail(suffix));
+  if (foregroundOwnsDisplay()) { renderCurrent(true); return; }
+  const String code = outboxCount ? codeFromPayload(outboxFront()) : "";
+  if (sendError.length()) showScreen(InventoryScreen::error, code, sendError);
+  else showScreen(InventoryScreen::pending, code, suffix);
 }
 
 // 再送時刻と通信準備を確認し、FIFO先頭をネットワークタスクへ渡す。
@@ -414,14 +380,20 @@ void startNextSend() {
   SendJob job{};
   const String payload = outboxFront();
   if (payload.length() >= sizeof(job.payload)) {
-    showScreen(InventoryScreen::error, codeFromPayload(payload), "QUEUE DATA");
+    sendError = "QUEUE DATA";
+    nextPendingRetryAt = millis() + kPendingRetryMs;
+    showPending("AUTO RETRY");
     return;
   }
   strlcpy(job.payload, payload.c_str(), sizeof(job.payload));
   if (xQueueSend(sendJobs, &job, 0) != pdTRUE) return;
   sendInFlight = true;
-  currentCode = codeFromPayload(payload);
-  showScreen(InventoryScreen::sending, currentCode, queueDetail("SENDING"));
+  presentation.dispatched(outboxCount);
+  if (!foregroundOwnsDisplay()) {
+    showScreen(InventoryScreen::sending, codeFromPayload(payload));
+  } else {
+    renderCurrent(true);
+  }
   Serial.printf("Sending oldest queued scan; queue=%u\n", outboxCount);
 }
 
@@ -432,7 +404,9 @@ void serviceSendResult() {
   if (xQueueReceive(sendResults, &result, 0) != pdTRUE) return;
   sendInFlight = false;
   if (!outboxCount || eventIdFromPayload(outboxFront()) != result.eventId) {
-    showScreen(InventoryScreen::error, "", "QUEUE ORDER");
+    sendError = "QUEUE ORDER";
+    nextPendingRetryAt = millis() + kPendingRetryMs;
+    showPending("AUTO RETRY");
     Serial.println("Queue order error; nothing removed");
     return;
   }
@@ -440,13 +414,22 @@ void serviceSendResult() {
   const String savedCode = codeFromPayload(outboxFront());
   if (result.outcome == SendOutcome::saved) {
     if (!dequeueOutbox()) {
-      showScreen(InventoryScreen::error, savedCode, "LOCAL STORAGE");
+      sendError = "LOCAL STORAGE";
+      showPending("AUTO RETRY");
       Serial.println("Acknowledged scan retained because queue metadata could not be updated");
       nextPendingRetryAt = millis() + kPendingRetryMs;
       return;
     }
-    showScreen(InventoryScreen::saved, savedCode,
-               outboxCount ? queueDetail("WAITING") : "SHEET CONFIRMED");
+    sendError = "";
+    presentation.confirmedRemoval(outboxCount, sendInFlight);
+    const bool currentEvent = foregroundEventId == result.eventId;
+    if (currentEvent && !presentation.rejected && view.screen != InventoryScreen::scanning) {
+      showForeground(InventoryScreen::saved, savedCode);
+    } else if (!foregroundOwnsDisplay()) {
+      showScreen(InventoryScreen::saved, savedCode);
+    } else {
+      renderCurrent(true);
+    }
     Serial.printf("Sheet confirmed; remaining queue=%u\n", outboxCount);
     nextPendingRetryAt = millis() + (outboxCount ? kNextQueueSendDelayMs : 0);
     return;
@@ -469,14 +452,15 @@ void handleDecoded(uint16_t length) {
   currentCode = safeDisplayText(buffer, length);
 
   if (INVENTORY_CAPTURE_ONLY) {
-    showScreen(InventoryScreen::captured, currentCode);
+    showForeground(InventoryScreen::captured, currentCode);
     Serial.println("Captured locally");
     return;
   }
 
   for (uint16_t i = 0; i < length; ++i) {
     if (buffer[i] < 32 || buffer[i] == 127) {
-      showScreen(InventoryScreen::error, currentCode, "CONTROL BYTES");
+      presentation.reject(millis());
+      showForeground(InventoryScreen::error, currentCode, "CONTROL BYTES");
       Serial.println("Control bytes rejected");
       return;
     }
@@ -493,16 +477,21 @@ void handleDecoded(uint16_t length) {
   String payload;
   serializeJson(request, payload);
   if (outboxCount >= kOutboxCapacity) {
-    showScreen(InventoryScreen::error, currentCode, "QUEUE FULL");
+    presentation.reject(millis());
+    showForeground(InventoryScreen::full, currentCode, "NOT ACCEPTED");
     Serial.println("Queue full; decoded scan could not be accepted");
     return;
   }
   if (!enqueueOutbox(payload)) {
-    showScreen(InventoryScreen::error, currentCode, "LOCAL STORAGE");
+    presentation.reject(millis());
+    showForeground(InventoryScreen::error, currentCode, "LOCAL STORAGE");
     Serial.println("Storage error; decoded scan could not be queued");
     return;
   }
-  showScreen(InventoryScreen::queued, currentCode, queueDetail("LOCAL SAFE"));
+  foregroundEventId = eventId;
+  presentation.accepted(millis());
+  showForeground(InventoryScreen::queued, currentCode,
+                 transportReady() ? "AUTO RETRY" : "WAIT WIFI");
   Serial.printf("Scan stored in durable queue; queue=%u\n", outboxCount);
   nextPendingRetryAt = millis();
 }
@@ -510,14 +499,16 @@ void handleDecoded(uint16_t length) {
 void onTriggerPressed() {
   triggerHeld = true;
   scanHandledForPress = false;
-  showScreen(InventoryScreen::scanning);
+  presentation.trigger(millis());
+  foregroundEventId = "";
+  showForeground(InventoryScreen::scanning);
   Serial.println("Scanning while QR TRIG is held");
 }
 
 void onTriggerReleased() {
   triggerHeld = false;
   if (view.screen == InventoryScreen::scanning && !scanHandledForPress) {
-    showScreen(InventoryScreen::noCode);
+    showForeground(InventoryScreen::noCode);
     Serial.println("Trigger released without decoder data");
   }
 }
@@ -553,20 +544,34 @@ void pollScanner() {
 
 void serviceScreen() {
   const uint32_t now = millis();
-  if ((view.screen == InventoryScreen::saved || view.screen == InventoryScreen::captured) &&
-      now - screenStartedAt >= kResultHoldMs) {
-    showReady();
+  if (presentation.foregroundActive && !foregroundOwnsDisplay()) {
+    presentation.foregroundActive = false;
+    if (outboxCount) {
+      if (sendInFlight) showScreen(InventoryScreen::sending, codeFromPayload(outboxFront()));
+      else showPending(transportReady() ? "AUTO RETRY" : "WAIT WIFI");
+    } else if (!presentation.allSavedPending) showReady();
+  }
+  if (!foregroundOwnsDisplay() && presentation.allSavedPending && allSavesConfirmed(outboxCount, sendInFlight)) {
+    presentation.allSavedPending = false;
+    showScreen(InventoryScreen::allSaved);
+    return;
+  }
+  if ((view.screen == InventoryScreen::saved || view.screen == InventoryScreen::captured ||
+       view.screen == InventoryScreen::allSaved) && now - screenStartedAt >= kResultHoldMs) {
+    if (outboxCount) showPending(transportReady() ? "AUTO RETRY" : "WAIT WIFI");
+    else showReady();
     return;
   }
   if (view.screen == InventoryScreen::noCode && now - screenStartedAt >= kNoCodeHoldMs) {
-    showReady();
+    presentation.foregroundActive = false;
+    if (outboxCount) showPending(transportReady() ? "AUTO RETRY" : "WAIT WIFI");
+    else showReady();
     return;
   }
   const bool animated = view.screen == InventoryScreen::boot ||
                         view.screen == InventoryScreen::scanning ||
                         view.screen == InventoryScreen::sending;
-  const bool countdown = view.screen == InventoryScreen::saved ||
-                         view.screen == InventoryScreen::captured;
+  const bool countdown = view.screen == InventoryScreen::captured;
   const uint32_t refreshMs = countdown ? kCountdownRefreshMs : kAnimationMs;
   if ((animated || countdown) && now - lastRenderAt >= refreshMs) {
     ++animationPhase;

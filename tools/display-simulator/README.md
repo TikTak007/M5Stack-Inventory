@@ -45,3 +45,27 @@ The program creates PPM files first so the C++ capture path has no image-library
 dependency. `convert_captures.py` converts them to PNG without resizing. If the
 default `python3` has no working Pillow installation, use a Python environment
 with Pillow installed.
+
+## Save status fixtures and state tests
+
+Each device capture run now creates 23 synthetic states, including fixed-batch
+progress, a read during retry, rejection after storage space frees, two-digit
+counts, long codes, and battery values 0%, 100%, and unavailable. `UNSENT`
+includes the request in flight. AtomS3 shows batch progress in the bottom panel
+while background synchronization runs; StickS3 shows code and progress together.
+The foreground read and its result take priority over background completion.
+
+Run the production FIFO and status tests without device or network operations:
+
+```sh
+python3 tests/run_tests.py
+```
+
+The ACK JSON test requires ArduinoJson 7.2.1. After a PlatformIO firmware build,
+the runner finds its installed headers automatically. For a standalone test,
+set `ARDUINOJSON_INCLUDE` to the library's `src` directory. Missing headers fail
+the test run rather than skipping ACK parsing. CI checks out the same version.
+These tests cover durable metadata
+failure, the 17th read rejection, FIFO wrap and restart, strict typed ACK fields,
+fixed batch progress, and foreground scan ownership. They do not measure
+physical scan intervals or confirm a live Google Sheets save.

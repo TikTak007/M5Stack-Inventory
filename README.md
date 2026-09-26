@@ -8,13 +8,14 @@ M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeで読み取り�
 
 ![Unit QRCodeからGoogle Sheetsまでの処理フロー](docs/assets/hardware/system-flow.png)
 
-本体側のボタンは使いません。Unit QRCodeのTRIGを押している間だけ読み取り、端末が`SAVED / READY FOR NEXT`を表示した時点で、Apps ScriptがScansへの保存を読み戻して確認済みです。通信できない間は最大16件を端末内へ保存し、同じイベントIDで自動再送します。
+本体側のボタンは使いません。Unit QRCodeのTRIGを押している間だけ読み取ります。`SAVED`は表示中の1件をScansへ保存確認済み、`ALL SAVED`は端末に未確認データが残っていないこと、`READY`は次を読み取れることを示します。`UNSENT n`は送信中も含む未確認件数です。通信できない間も最大16件を端末内へ保存し、復旧後に同じイベントIDで自動再送します。
 
 ## 主な機能
 
 - M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeの公式I2C APIで読み取り
 - M5Unifiedで本体を制御し、M5GFXのSpriteを端末の画面サイズに合わせて一括描画
-- READY、SCANNING、QUEUED、SENDING、SAVED、PENDING、NO CODE、QUEUE FULLを表示
+- 未送信数を常時表示し、READY、SCANNING、SAVED、SYNCING、ALL SAVED、STORAGE FULLなどで作業状況を案内
+- 再送進捗は開始時の対象件数を固定して表示し、再送中の追加読取りも受け付け
 - 読み取ったコードを視認性の高いFreeSansBold 12ptで表示
 - HTTPS、共有キー、イベントIDによる認証と重複登録防止
 - Scansに在庫履歴を保存し、Inventoryに保有数・状態・製品名・代表画像を表示
@@ -52,7 +53,7 @@ M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeで読み取り�
 2. [Google Sheets / Apps Scriptセットアップ](docs/apps-script-setup.md)に従い、スプレッドシートとWebアプリを準備します。
 3. 開発環境を選びます。AtomS3は[Arduino IDE版スケッチ](arduino/M5Stack_Inventory/README.md)または下記のPlatformIO環境、StickS3はPlatformIO環境を使います。
 4. 各手順に従って`secrets.h`を作成し、Wi-Fi、WebアプリURL、同じ`DEVICE_KEY`、信頼するルートCAを設定します。
-5. Unit QRCodeのTRIGを押し続け、読取り音が鳴ったら離します。`SAVED / READY FOR NEXT`を確認し、ScansとInventoryを確認します。
+5. Unit QRCodeのTRIGを押し続け、読取り音が鳴ったら離します。`SAVED`と対象コードを確認します。全件完了は`ALL SAVED`または`READY / UNSENT 0`で確認し、ScansとInventoryを別々に確認します。リーダー音だけでは受付成功を判断できません。
 
 詳しい実機試験、状態変更、初期化は[セットアップと運用](docs/setup.md)を参照してください。
 
@@ -80,7 +81,7 @@ StickS3では、Unit QRCodeの読取り、Wi-Fi接続、Apps Script経由のGoog
 
 ## Arduino IDE環境
 
-Arduino IDE 2.x用のスケッチは[`arduino/M5Stack_Inventory`](arduino/M5Stack_Inventory/)にあります。GitHubからのダウンロード後、フォルダー内の`M5Stack_Inventory.ino`を開いて使えます。
+Arduino IDE 2.x用のスケッチは[`arduino/M5Stack_Inventory`](arduino/M5Stack_Inventory/)にあります。GitHubからのダウンロード後、フォルダー内の`M5Stack_Inventory.ino`を開いて使えます。Arduino IDE版だけを配布する場合は[ZIP版](docs/downloads/M5Stack_Inventory_ArduinoIDE.zip)を使えます。
 
 ## Google Sheetsの構成
 
@@ -98,17 +99,29 @@ Inventoryの数量セルやScansの既存行を直接変更すると、履歴と
 
 PC上で実際の`InventoryDisplay.h`をM5GFXのSDLバックエンドへ渡し、説明書用の画面を生成できます。描画を別に作り直す方式ではないため、色、座標、フォント、文言はファームウェアと同じです。
 
-| READY | SCANNING | QUEUED | SENDING | SAVED |
+| READY | SCANNING | STORED | SENDING | SAVED |
 |---|---|---|---|---|
-| ![READY](docs/assets/display/ready.png) | ![SCANNING](docs/assets/display/scanning.png) | ![QUEUED](docs/assets/display/queued.png) | ![SENDING](docs/assets/display/sending.png) | ![SAVED](docs/assets/display/saved.png) |
+| ![READY](docs/assets/display/ready.png) | ![SCANNING](docs/assets/display/scanning.png) | ![STORED](docs/assets/display/queued.png) | ![SENDING](docs/assets/display/sending.png) | ![SAVED](docs/assets/display/saved.png) |
+
+| 通信待ち | 再送進捗 | 全件完了 | 容量満杯 |
+|---|---|---|---|
+| ![STORED / WAIT WIFI](docs/assets/display/pending.png) | ![SYNCING](docs/assets/display/syncing.png) | ![ALL SAVED](docs/assets/display/all-saved.png) | ![STORAGE FULL](docs/assets/display/queue-full.png) |
 
 上の画面例はAtomS3です。StickS3は右上のWi-Fi表示の右に電池残量を表示します。次の82%はシミュレーターの例で、実機ではM5Unifiedから残量を取得します。取得できない場合は`--%`を表示します。
 
-| StickS3 READY | StickS3 SAVED | StickS3 PENDING |
+| StickS3 READY | StickS3 SAVED | StickS3 STORED / WAIT WIFI |
 |---|---|---|
-| ![StickS3 READY](docs/assets/display-sticks3/ready.png) | ![StickS3 SAVED](docs/assets/display-sticks3/saved.png) | ![StickS3 PENDING](docs/assets/display-sticks3/pending.png) |
+| ![StickS3 READY](docs/assets/display-sticks3/ready.png) | ![StickS3 SAVED](docs/assets/display-sticks3/saved.png) | ![StickS3 STORED / WAIT WIFI](docs/assets/display-sticks3/pending.png) |
+
+| StickS3 再送進捗 | StickS3 全件完了 | StickS3 容量満杯 |
+|---|---|---|
+| ![StickS3 SYNCING](docs/assets/display-sticks3/syncing.png) | ![StickS3 ALL SAVED](docs/assets/display-sticks3/all-saved.png) | ![StickS3 STORAGE FULL](docs/assets/display-sticks3/queue-full.png) |
 
 StickS3の画面構成は[技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)の最終ページにも掲載しています。
+
+`2/5 SAVED`は今回の再送対象5件のうち2件を確認済みという意味です。再送中の新しい読取りは分母へ追加せず、全体の`UNSENT`に即時反映します。AtomS3は再送進捗とコードの表示を切り替え、StickS3はコードと進捗を同時に表示します。新しい読取りの表示を優先します。
+
+最大16件には送信中の1件も含みます。`STORAGE FULL / 16/16`では今回の読取りを受け付けていません。空きができてから再スキャンしてください。端末内保存に失敗した場合は`LOCAL STORAGE`を表示し、保存済みと扱いません。未確認データは電源再投入後も保持し、古い順に再送します。`SAVED`はScansへの保存確認であり、Inventoryの表示や製品名・画像の更新完了とは別です。
 
 手順は[画面キャプチャ生成](tools/display-simulator/README.md)を参照してください。
 
@@ -126,11 +139,14 @@ M5GFXの基盤となったグラフィックスライブラリ
 
 ## テスト
 
-Apps Scriptの受信、重複防止、製品補完、状態遷移、初期化をローカルの模擬Sheets環境で確認します。
+Apps Scriptの受信、読戻し照合、重複防止、製品補完、状態遷移、初期化をローカルの模擬Sheets環境で確認します。端末の保存応答、永続FIFO、再送進捗もC++17コンパイラーを使う合成試験で確認します。
 
 ```sh
 node --test tests/ingest.test.cjs
+python3 tools/display-simulator/tests/run_tests.py
 ```
+
+実機とGoogle側を含む受入条件は[受入試験](docs/reproduction-checklist.md)にあります。
 
 ## セキュリティ
 
@@ -151,6 +167,7 @@ node --test tests/ingest.test.cjs
 - [受信プロトコル](docs/protocol.md)
 - [技術者向け再現チェックリスト](docs/reproduction-checklist.md)
 - [技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)
+- [技術者向け構築・検証ガイド（Canva取込み用PPTX）](docs/M5Stack_Inventory_Guide.pptx)
 - [第三者ソフトウェアに関する表記](THIRD_PARTY_NOTICES.md)
 
 ## License

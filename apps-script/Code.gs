@@ -344,7 +344,7 @@ function doPost(e) {
     // appendRowの完了だけでは成功とせず、flush後に同じeventId/codeの行を読み戻す。
     // この確認が通った場合だけ端末へverified:trueを返す。
     const confirmed = sheet.getRange(confirmationRow, 1, 1, 2).getValues()[0] || [];
-    if (!confirmed || confirmed[1] !== request.code) throw new Error('STORAGE_ERROR');
+    if (confirmed[0] !== request.eventId || confirmed[1] !== request.code) throw new Error('STORAGE_ERROR');
     return json_({ok: true, eventId: request.eventId, duplicate: !!prior, verified: true});
   } catch (error) {
     const allowed = ['NOT_CONFIGURED', 'UNAUTHORIZED', 'INVALID_REQUEST', 'BUSY', 'SCHEMA_MISMATCH', 'EVENT_CONFLICT'];

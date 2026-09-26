@@ -51,6 +51,7 @@ Apps Script左側の歯車`プロジェクトの設定`を開き、`スクリプ
 
 ![スクリプトプロパティの設定場所](assets/setup/03-script-properties.png)
 
+
 | プロパティ | 値 |
 |---|---|
 | `SPREADSHEET_ID` | 手順1で確認したID |
@@ -108,6 +109,7 @@ $rng.Dispose()
 
 ![プロジェクト設定とWebアプリのデプロイ](assets/setup/04-properties-and-deploy.png)
 
+
 組織のGoogle Workspaceポリシーで匿名アクセスを許可できない場合、この端末構成のままでは利用できません。管理者ポリシーを確認するか、別の受信方式を設計してください。
 
 ブラウザで`/exec` URLを開くと、次のような死活応答だけが表示されます。InventoryやScansの内容は返しません。
@@ -134,6 +136,7 @@ $rng.Dispose()
 4. PlatformIOはAtomS3なら`atoms3-send-check`、StickS3なら`sticks3-send-check`を選びます。Arduino IDE版は`M5AtomS3`ボードと`USB CDC On Boot: Enabled`を選び、AtomS3へ書き込みます。Arduino IDE側のボードパッケージとライブラリのバージョンは[Arduino IDE手順](../arduino/M5Stack_Inventory/README.md)に固定値を記載しています。
 
 ![secrets.hに設定する値](assets/setup/05-secrets-h-guide.png)
+
 
 `secrets.h`は`.gitignore`の対象です。証明書検証を無効化する`setInsecure()`は使用しません。
 
@@ -190,10 +193,10 @@ pio device monitor -b 115200
 1. 端末の上部表示がWi-Fi `ON`、中央が`READY`になるまで待ちます。
 2. Unit QRCodeのTRIGを押したままコードへ向けます。
 3. 読取り音が鳴ったらTRIGを離します。
-4. `QUEUED`、`SENDING`、`SAVED / READY FOR NEXT`の順に進むことを確認します。
+4. 対象コードと`SAVED / READY FOR NEXT`を確認します。通信が早い場合は`STORED`から直接`SAVED`へ進みます。`SENDING`や`SYNCING`は背景の再送中などに表示され、中間画面をすべて見ることは成功の条件ではありません。
 5. Google SheetsのScansへ1行、Inventoryへ対象製品が追加されることを確認します。
 
-`SAVED`はApps ScriptがScansへ書き込み、同じ`event_id`と`code`を読み戻して`verified:true`を返した状態です。Google Sheetsをブラウザで開いていなくてもWebアプリは動作し、データは追加されます。
+`SAVED`はApps ScriptがScansへ書き込み、同じ`event_id`と`code`を読み戻して`verified:true`を返し、端末が成功応答・同じイベントID・保存確認フラグを確認して端末内キューの削除にも成功した状態です。Inventoryの描画や製品名・画像取得の完了とは別です。`UNSENT n`は送信中を含む未確認件数、`ALL SAVED`は端末内の未確認0件かつ送信中の要求もない全件完了、`READY`は次の読取りが可能という意味です。Google Sheetsをブラウザで開いていなくてもWebアプリは動作し、データは追加されます。
 
 ## 8. よくある問題
 
@@ -205,7 +208,7 @@ pio device monitor -b 115200
 | Inventoryに製品情報がない | ProductMasterのB〜D列、公式SKUページ、画像URLを確認 |
 | 画像だけ表示されない | 画像URLが直接取得できるHTTPS URLか、外部画像アクセスを許可したか |
 | 日時がJSTでない | `setup()`を再実行し、スプレッドシートのタイムゾーンを確認 |
-| `PENDING`が続く | Wi-Fi、TLS用CA、WebアプリURL、Apps Script実行履歴を確認 |
+| `UNSENT`が減らない | Wi-Fi、TLS用CA、WebアプリURL、Apps Script実行履歴を確認 |
 | Apps Scriptが302/303を返す | 端末実装はGoogleの転送先へGETし、共有キー付きPOSTを転送しない |
 
 ## 9. 再現確認
@@ -223,10 +226,11 @@ pio run -e atoms3 -e atoms3-send-check -e sticks3 -e sticks3-send-check
 1. 未登録コードを1回送信し、Scansが1行、Inventoryの保有数が1になる。
 2. 同じ`event_id`を再送し、Scansと保有数が増えない。
 3. 新しい`event_id`で同じコードを送信し、保有数が2になる。
-4. Wi-Fiを切った状態で読み取り、`PENDING`または未送信キューへ保持される。
-5. Wi-Fi復旧後に`SAVED`となり、1回だけ追加される。
-6. Sheetsをブラウザで閉じた状態でも、Webアプリ経由で追加される。
-7. M5Stack以外のコードや公式検索に失敗したコードは、ProductMasterのB〜D列を手動補完できる。
+4. Wi-Fiを切った状態で読み取り、`STORED / WAIT WIFI`とUNSENT増加を確認する。再起動後も未確認データを保持する。
+5. Wi-Fi復旧後に同じイベントIDで自動再送し、1回だけ追加される。再送進捗の分母は開始時の対象件数に固定し、途中の追加読取りは後続の対象になる。
+6. 16件保持中の`STORAGE FULL`では今回の読取りを受け付けない。空きができてから再スキャンする。リーダー音だけで受付成功を判断しない。
+7. Sheetsをブラウザで閉じた状態でも、Webアプリ経由で追加される。
+8. M5Stack以外のコードや公式検索に失敗したコードは、ProductMasterのB〜D列を手動補完できる。
 
 本実装は個人の少量データを対象としています。重複確認はScansの履歴全体を参照するため、大量履歴の性能は未検証です。StickS3はUnit QRCodeの読取り、Wi-Fi接続、Google Sheetsへの実送信を実機確認済みです。画面レイアウトは使用する端末で最終確認してください。Google Workspaceの匿名Webアプリ公開、Apps ScriptやSheetsのクォータも導入先で確認してください。
 

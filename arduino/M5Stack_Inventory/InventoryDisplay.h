@@ -22,6 +22,8 @@ enum class InventoryScreen {
   scanning,
   sending,
   saved,
+  allSaved,
+  full,
   captured,
   queued,
   pending,
@@ -37,6 +39,9 @@ struct InventoryView {
   int16_t batteryPercent = -1;
   String code;
   String detail;
+  uint8_t unsent = 0;
+  uint8_t batchTotal = 0;
+  uint8_t batchSaved = 0;
   uint8_t phase = 0;
   uint16_t remainingMs = 0;
 };
@@ -62,6 +67,7 @@ class InventoryDisplay {
   void render(const InventoryView& view) {
     if (!ready_) return;
 
+    compactCodePanel_ = view.code.length() || view.screen == InventoryScreen::full;
     beginFrame(view, accentFor(view.screen));
     switch (view.screen) {
       case InventoryScreen::boot:
@@ -78,13 +84,23 @@ class InventoryDisplay {
         break;
       case InventoryScreen::sending:
         drawUploadIcon(accentFor(view.screen), view.phase);
-        drawStatus("SENDING", "TO INVENTORY");
-        drawCodePanel(view.code);
+        drawStatus(view.batchTotal > 1 ? "SYNCING" : "SENDING", "TO SCANS");
+        drawCodeOrProgress(view);
         break;
       case InventoryScreen::saved:
         drawCheckIcon(accentFor(view.screen));
-        drawStatus("SAVED", "READY FOR NEXT");
+        drawStatus("SAVED", view.unsent < 16 ? "READY FOR NEXT" : "STORAGE FULL");
         drawCodePanel(view.code);
+        break;
+      case InventoryScreen::allSaved:
+        drawCheckIcon(accentFor(view.screen));
+        drawStatus("ALL SAVED", "READY FOR NEXT");
+        break;
+      case InventoryScreen::full:
+        drawErrorIcon(accentFor(view.screen));
+        drawStatus(view.unsent >= 16 ? "STORAGE FULL" : "SCAN REJECTED",
+                   view.unsent >= 16 ? "16/16 NOT ACCEPTED" : "SPACE AVAILABLE");
+        drawRejectionPanel(view.unsent >= 16);
         break;
       case InventoryScreen::captured:
         drawCheckIcon(accentFor(view.screen));
@@ -94,13 +110,14 @@ class InventoryDisplay {
         break;
       case InventoryScreen::queued:
         drawPendingIcon(accentFor(view.screen));
-        drawStatus("QUEUED", view.detail.length() ? view.detail.c_str() : "LOCAL SAFE");
+        drawStatus("STORED", view.wifi == WifiVisualState::online
+          ? "DEVICE / AUTO RETRY" : "DEVICE / WAIT WIFI");
         drawCodePanel(view.code);
         break;
       case InventoryScreen::pending:
         drawPendingIcon(accentFor(view.screen));
-        drawStatus("PENDING", view.detail.length() ? view.detail.c_str() : "AUTO RETRY");
-        drawCodePanel(view.code);
+        drawStatus("STORED", view.detail.length() ? view.detail.c_str() : "AUTO RETRY");
+        drawCodeOrProgress(view);
         break;
       case InventoryScreen::noCode:
         drawPendingIcon(accentFor(view.screen));
@@ -112,6 +129,7 @@ class InventoryDisplay {
         if (view.code.length()) drawCodePanel(view.code);
         break;
     }
+    if (sprite_.height() >= 180 && view.batchTotal) drawProgress(view, 153);
     sprite_.pushSprite(0, 0);
   }
 
@@ -123,6 +141,7 @@ class InventoryDisplay {
   uint16_t accentFor(InventoryScreen screen) const {
     switch (screen) {
       case InventoryScreen::saved:
+      case InventoryScreen::allSaved:
       case InventoryScreen::captured:
         return rgb(42, 231, 166);
       case InventoryScreen::queued:
@@ -130,6 +149,7 @@ class InventoryDisplay {
       case InventoryScreen::noCode:
         return rgb(255, 184, 76);
       case InventoryScreen::error:
+      case InventoryScreen::full:
         return rgb(255, 83, 112);
       case InventoryScreen::boot:
       case InventoryScreen::ready:
@@ -159,16 +179,32 @@ class InventoryDisplay {
     sprite_.setTextSize(1);
     sprite_.setTextDatum(middle_left);
     sprite_.setTextColor(rgb(232, 242, 250), header);
-    sprite_.drawString(view.hasBattery ? "KVS" : "KVS STOCK", 6, headerHeight / 2 - 1);
-    drawWifiBadge(view.wifi, headerHeight, view.hasBattery);
-    if (view.hasBattery) drawBatteryBadge(view.batteryPercent, headerHeight);
+    if (height >= 180) {
+      sprite_.drawString("KVS", 6, headerHeight / 2 - 1);
+      drawWifiBadge(view.wifi, headerHeight, view.hasBattery);
+      if (view.hasBattery) drawBatteryBadge(view.batteryPercent, headerHeight);
+      sprite_.setTextDatum(middle_center);
+      sprite_.setFont(&fonts::efontJA_14_b);
+      sprite_.setTextColor(rgb(232, 242, 250));
+      char label[16];
+      snprintf(label, sizeof(label), "UNSENT %u", view.unsent);
+      sprite_.drawString(label, width / 2, 40);
+    } else {
+      drawWifiBadge(view.wifi, headerHeight, false);
+      sprite_.setTextDatum(middle_right);
+      sprite_.setFont(&fonts::efontJA_10_b);
+      sprite_.setTextColor(rgb(232, 242, 250), header);
+      char label[16];
+      snprintf(label, sizeof(label), "UNSENT %u", view.unsent);
+      sprite_.drawString(label, width - 5, headerHeight / 2 - 1);
+    }
     sprite_.setTextDatum(middle_center);
   }
 
   void drawWifiBadge(WifiVisualState state, int16_t headerHeight, bool hasBattery) {
     const int16_t width = sprite_.width();
     const int16_t boxWidth = hasBattery ? 38 : 42;
-    const int16_t x = hasBattery ? width - 94 : width - boxWidth - 4;
+    const int16_t x = hasBattery ? width - 94 : 4;
     const int16_t y = 3;
     const int16_t boxHeight = headerHeight - 7;
     const uint16_t badge = rgb(14, 35, 51);
@@ -224,10 +260,7 @@ class InventoryDisplay {
   // 128px画面ではコード表示と重ならない位置へ状態文言を寄せる。
   void drawStatus(const char* title, const char* subtitle) {
     const int16_t height = sprite_.height();
-    const bool hasCodePanel = height < 180 &&
-      (!strcmp(title, "SAVED") || !strcmp(title, "CAPTURED") ||
-       !strcmp(title, "SENDING") || !strcmp(title, "QUEUED") ||
-       !strcmp(title, "PENDING"));
+    const bool hasCodePanel = height < 180 && compactCodePanel_;
     const int16_t titleY = hasCodePanel ? 59 : (height >= 180 ? 116 : 78);
     const int16_t subtitleY = titleY + (height >= 180 ? 24 : 17);
 
@@ -242,7 +275,7 @@ class InventoryDisplay {
   void drawScanFrame(uint16_t color) {
     const int16_t height = sprite_.height();
     const int16_t cx = sprite_.width() / 2;
-    const int16_t cy = height >= 180 ? 74 : 47;
+    const int16_t cy = height >= 180 ? 84 : 47;
     const int16_t r = height >= 180 ? 25 : 19;
     const int16_t arm = height >= 180 ? 10 : 8;
     sprite_.drawFastHLine(cx - r, cy - r, arm, color);
@@ -260,7 +293,7 @@ class InventoryDisplay {
   void drawActivityIcon(uint16_t color, uint8_t phase) {
     const int16_t height = sprite_.height();
     const int16_t cx = sprite_.width() / 2;
-    const int16_t cy = height >= 180 ? 73 : 43;
+    const int16_t cy = height >= 180 ? 84 : 43;
     const int16_t barWidth = height >= 180 ? 7 : 5;
     const int16_t gap = height >= 180 ? 6 : 5;
     for (int i = 0; i < 3; ++i) {
@@ -272,20 +305,21 @@ class InventoryDisplay {
   }
 
   void drawUploadIcon(uint16_t color, uint8_t phase) {
-    const int16_t cy = sprite_.height() >= 180 ? 73 : 39;
+    const int16_t cy = sprite_.height() >= 180 ? 84 : 39;
     const int16_t cx = sprite_.width() / 2;
     sprite_.drawRoundRect(cx - 20, cy - 10, 40, 21, 7, rgb(42, 79, 99));
     sprite_.drawFastVLine(cx, cy - 15, 21, color);
     sprite_.drawLine(cx, cy - 15, cx - 6, cy - 9, color);
     sprite_.drawLine(cx, cy - 15, cx + 6, cy - 9, color);
     for (int i = 0; i < 3; ++i) {
-      sprite_.fillCircle(cx - 8 + i * 8, cy + 17, i == phase % 3 ? 2 : 1,
+      sprite_.fillCircle(cx - 8 + i * 8, cy + (sprite_.height() >= 180 ? 17 : 7),
+                         i == phase % 3 ? 2 : 1,
                          i == phase % 3 ? color : rgb(42, 79, 99));
     }
   }
 
   void drawCheckIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? 72 : 39;
+    const int16_t cy = sprite_.height() >= 180 ? 84 : 39;
     const int16_t cx = sprite_.width() / 2;
     const int16_t radius = sprite_.height() >= 180 ? 19 : 14;
     sprite_.fillCircle(cx, cy, radius, rgb(10, 52, 48));
@@ -297,7 +331,7 @@ class InventoryDisplay {
   }
 
   void drawPendingIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? 72 : 39;
+    const int16_t cy = sprite_.height() >= 180 ? 84 : 39;
     const int16_t cx = sprite_.width() / 2;
     const int16_t radius = sprite_.height() >= 180 ? 19 : 14;
     sprite_.drawCircle(cx, cy, radius, color);
@@ -306,7 +340,7 @@ class InventoryDisplay {
   }
 
   void drawErrorIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? 72 : 45;
+    const int16_t cy = sprite_.height() >= 180 ? 84 : (compactCodePanel_ ? 39 : 45);
     const int16_t cx = sprite_.width() / 2;
     sprite_.drawCircle(cx, cy, 15, color);
     sprite_.fillRect(cx - 1, cy - 8, 3, 11, color);
@@ -363,6 +397,30 @@ class InventoryDisplay {
     sprite_.setFont(&fonts::efontJA_10_b);
   }
 
+  void drawProgress(const InventoryView& view, int16_t y) {
+    char label[24];
+    snprintf(label, sizeof(label), "%u/%u SAVED", view.batchSaved, view.batchTotal);
+    sprite_.setFont(&fonts::efontJA_14_b);
+    sprite_.setTextDatum(middle_center);
+    sprite_.setTextColor(rgb(232, 242, 250));
+    sprite_.drawString(label, sprite_.width() / 2, y);
+  }
+
+  void drawCodeOrProgress(const InventoryView& view) {
+    if (sprite_.height() < 180 && view.batchTotal) drawProgress(view, 103);
+    else drawCodePanel(view.code);
+  }
+
+  void drawRejectionPanel(bool full) {
+    const bool compact = sprite_.height() < 180;
+    sprite_.setFont(&fonts::efontJA_14_b);
+    sprite_.setTextColor(rgb(255, 184, 76));
+    sprite_.drawString("SCAN AGAIN", sprite_.width() / 2, compact ? 98 : 184);
+    sprite_.setFont(&fonts::efontJA_10_b);
+    sprite_.drawString(full ? "AFTER SPACE FREES" : "PRESS & HOLD TRIG",
+                       sprite_.width() / 2, compact ? 115 : 205);
+  }
+
   void drawCountdown(uint16_t remainingMs, uint16_t color) {
     const int16_t width = sprite_.width();
     const int16_t barWidth = static_cast<int32_t>(width - 12) * remainingMs / 5000;
@@ -371,4 +429,5 @@ class InventoryDisplay {
 
   M5Canvas sprite_;
   bool ready_ = false;
+  bool compactCodePanel_ = false;
 };

@@ -18,11 +18,18 @@ function fixture() {
   ]];
   const productRows = [['コード', '製品名', '画像URL', '参照元URL']];
   let locked = false, busy = false, failFlush = false, dropScanAppend = false;
+  let confirmationRead = null;
+  const calls = {reads: [], flushes: 0, fetches: 0};
   // Apps Scriptが使うSheet APIだけを最小限実装する。
-  const makeSheet = (data, literalColumn) => ({
+  const makeSheet = (data, literalColumn, name) => ({
     getLastRow: () => data.length,
     getRange: (r, c, n, m) => ({
-      getValues: () => data.slice(r - 1, r - 1 + n).map(x => x.slice(c - 1, c - 1 + m)),
+      getValues: () => {
+        calls.reads.push({sheet: name, r, c, n, m});
+        if (name === 'Scans' && r > 1 && c === 1 && n === 1 && m === 2 && confirmationRead)
+          return confirmationRead();
+        return data.slice(r - 1, r - 1 + n).map(x => x.slice(c - 1, c - 1 + m));
+      },
       setValues: values => values.forEach((row, ri) => row.forEach((value, ci) => {
         data[r - 1 + ri][c - 1 + ci] = value;
       }))
@@ -32,23 +39,27 @@ function fixture() {
   const book = {
     getSheetByName: name => name === 'Scans' ? sheet : name === 'ProductMaster' ? products : name === 'Inventory' ? inventory : null
   };
-  const sheet = makeSheet(rows, 1);
+  const sheet = makeSheet(rows, 1, 'Scans');
   sheet.appendRow = row => {
     if (!dropScanAppend) rows.push(row.map((x, i) => i === 1 ? x.slice(1) : x));
   };
-  const products = makeSheet(productRows, 0);
+  const products = makeSheet(productRows, 0, 'ProductMaster');
   const inventory = makeSheet([[
     'コード', '保有数', '未使用', '使用中', '廃棄済み',
     '製品名', '代表画像', '参照元', '操作'
-  ]], -1);
+  ]], -1, 'Inventory');
   inventory.setRowHeights = () => {};
   sheet.getParent = () => book;
   // Code.gsから見えるGoogle Apps Scriptグローバルをテスト用に置き換える。
   const context = vm.createContext({
     ContentService: {MimeType: {JSON: 'json'}, createTextOutput: text => ({setMimeType: () => JSON.parse(text)})},
     PropertiesService: {getScriptProperties: () => ({getProperty: n => n === 'DEVICE_KEY' ? key : 'test-sheet'})},
-    SpreadsheetApp: {openById: () => book, flush: () => {if (failFlush) throw Error('lost response');}},
+    SpreadsheetApp: {openById: () => book, flush: () => {
+      calls.flushes++;
+      if (failFlush) throw Error('lost response');
+    }},
     UrlFetchApp: {fetch: url => {
+      calls.fetches++;
       const isExample = url.endsWith('/C999');
       const isTab5 = url.endsWith('/C145');
       return {
@@ -65,9 +76,10 @@ function fixture() {
   vm.runInContext(source, context);
   const send = body => context.doPost({postData: {contents: JSON.stringify(body)}});
   const request = {version: 1, key, eventId: 'scan-0000000000000001', code: '0012345678905'};
-  return {rows, productRows, send, request, context, locked: () => locked,
+  return {rows, productRows, send, request, context, calls, locked: () => locked,
     busy: () => {busy = true;}, failFlush: value => {failFlush = value;},
-    dropScanAppend: value => {dropScanAppend = value;}};
+    dropScanAppend: value => {dropScanAppend = value;},
+    confirmationRead: reader => {confirmationRead = reader;}};
 }
 // -----------------------------------------------------------------------------
 // 端末POST、重複防止、製品情報補完
@@ -166,6 +178,59 @@ test('success is never returned when the ledger row cannot be read back', () => 
   const f = fixture(); f.dropScanAppend(true);
   assert.equal(f.send(f.request).error, 'STORAGE_ERROR');
   assert.equal(f.rows.length, 1);
+});
+for (const duplicate of [false, true]) {
+  for (const failure of ['event id mismatch', 'code mismatch', 'missing event id', 'missing code',
+    'empty values', 'empty row', 'read error']) {
+    test(`${duplicate ? 'retry' : 'new scan'} requires matching persisted id and code: ${failure}`, () => {
+      const f = fixture();
+      if (duplicate) assert.equal(f.send(f.request).verified, true);
+      f.confirmationRead(() => {
+        if (failure === 'read error') throw Error('read failed');
+        if (failure === 'empty values') return [];
+        if (failure === 'empty row') return [[]];
+        if (failure === 'event id mismatch') return [['scan-0000000000000002', f.request.code]];
+        if (failure === 'missing event id') return [[undefined, f.request.code]];
+        if (failure === 'missing code') return [[f.request.eventId]];
+        return [[f.request.eventId, 'other-code']];
+      });
+      assert.deepEqual(f.send(f.request), {ok: false, error: 'STORAGE_ERROR'});
+      assert.equal(f.locked(), false);
+      assert.equal(f.rows.length, 2);
+      // 確認できない応答でも同じIDで再送し、確認後にだけ成功にする。
+      f.confirmationRead(null);
+      const retry = f.send(f.request);
+      assert.equal(retry.ok, true);
+      assert.equal(retry.duplicate, true);
+      assert.equal(retry.verified, true);
+      assert.equal(retry.eventId, f.request.eventId);
+      assert.equal(f.rows.length, 2);
+    });
+  }
+}
+test('id confirmation reuses the existing two-column read without added flush or HTTP calls', () => {
+  const f = fixture();
+  assert.equal(f.send(f.request).verified, true);
+  assert.deepEqual(f.calls.reads, [
+    {sheet: 'Scans', r: 1, c: 1, n: 1, m: 8},
+    {sheet: 'ProductMaster', r: 1, c: 1, n: 1, m: 4},
+    {sheet: 'Inventory', r: 1, c: 1, n: 1, m: 9},
+    {sheet: 'Scans', r: 2, c: 1, n: 1, m: 2}
+  ]);
+  assert.equal(f.calls.flushes, 1);
+  assert.equal(f.calls.fetches, 0);
+  f.calls.reads.length = 0;
+  assert.equal(f.send(f.request).verified, true);
+  assert.deepEqual(f.calls.reads, [
+    {sheet: 'Scans', r: 1, c: 1, n: 1, m: 8},
+    {sheet: 'ProductMaster', r: 1, c: 1, n: 1, m: 4},
+    {sheet: 'Scans', r: 2, c: 1, n: 1, m: 8},
+    {sheet: 'ProductMaster', r: 2, c: 1, n: 1, m: 1},
+    {sheet: 'ProductMaster', r: 2, c: 2, n: 1, m: 3},
+    {sheet: 'Scans', r: 2, c: 1, n: 1, m: 2}
+  ]);
+  assert.equal(f.calls.flushes, 2);
+  assert.equal(f.calls.fetches, 0);
 });
 test('unexpected sheet headers block writes', () => {
   const f = fixture(); f.rows[0][0] = 'changed';
