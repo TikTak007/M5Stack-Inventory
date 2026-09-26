@@ -9,7 +9,7 @@ AtomS3またはStickS3とUnit QRCodeを使う在庫管理スケッチです。Pl
 - 通信：2.4GHz Wi-FiからApps Script WebアプリへHTTPS送信
 - 表示：M5Unified + M5GFX Sprite
 - PORT.Aピンと画面サイズはM5Unifiedから取得し、機種に合わせて表示する
-- 機種・開発環境ごとの今回のビルドと実機確認は[検証記録](../../docs/validation.md)を参照
+- 機種・開発環境ごとの今回のビルドと実機確認は[検証記録](https://github.com/TikTak007/M5Stack-Inventory/blob/main/docs/validation.md)を参照
 
 ## 1. Arduino IDEとボードを準備
 
@@ -41,13 +41,13 @@ Arduino IDEの`ツール` → `ライブラリを管理`から次をインスト
 
 `WiFi`、`WiFiClientSecure`、`HTTPClient`、`Preferences`はM5Stack ESP32ボードパッケージに含まれます。
 
-`M5UnitQRCode` 1.0.0はArduino IDEのライブラリマネージャーから導入でき、過去の版でコンパイル確認済みです。今回の起動復帰候補のArduino CLI検証は1.0.1を使った限定検証です。詳しい範囲は[検証記録](../../docs/validation.md)を参照してください。PlatformIO版は1.0.1を使用しますが、本ファームウェアが使用するAPIは1.0.0と互換です。
+`M5UnitQRCode` 1.0.0はArduino IDEのライブラリマネージャーから導入でき、過去の版でコンパイル確認済みです。今回の起動復帰候補のArduino CLI検証は1.0.1を使った限定検証です。詳しい範囲は[検証記録](https://github.com/TikTak007/M5Stack-Inventory/blob/main/docs/validation.md)を参照してください。PlatformIO版は1.0.1を使用しますが、本ファームウェアが使用するAPIは1.0.0と互換です。
 
 ## 3. スケッチを設定
 
 1. この`M5Stack_Inventory`フォルダー全体をArduinoのスケッチブックへコピーします。フォルダー名と`.ino`名を同じにします。
 2. `secrets.example.h`を同じフォルダー内で`secrets.h`という名前で複製します。
-3. `secrets.h`へWi-Fi、Apps Scriptの`/exec` URL、Google側と同じ`DEVICE_KEY`、現在有効なルートCAを設定します。各値の入手とApps Script側の配置は[セットアップ手順](../../docs/apps-script-setup.md)を参照してください。
+3. `secrets.h`へWi-Fi、Apps Scriptの`/exec` URL、Google側と同じ`DEVICE_KEY`、現在有効なルートCAを設定します。各値の入手とApps Script側の配置は[セットアップ手順](https://github.com/TikTak007/M5Stack-Inventory/blob/main/docs/apps-script-setup.md)を参照してください。
 4. 送信を有効にする場合は、`secrets.h`の末尾へ次を追加するか、既存定義を`false`へ変更します。
 
    ```cpp
