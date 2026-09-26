@@ -27,6 +27,16 @@ struct MemoryStorage {
 };
 
 int main() {
+  // Existing NVS keys must remain readable across a firmware update, including wrap.
+  MemoryStorage legacy;
+  legacy.metadata = 15 | (2 << 8);
+  legacy.slots["q15"] = "older";
+  legacy.slots["q00"] = "newer";
+  std::string legacyItems[16];
+  uint8_t legacyHead = 0, legacyCount = 0;
+  assert(restoreDurableOutbox(legacyItems, legacyHead, legacyCount, 16, legacy));
+  assert(legacyHead == 15 && legacyCount == 2);
+  assert(legacyItems[15] == "older" && legacyItems[0] == "newer");
   MemoryStorage storage;
   std::string items[16];
   uint8_t head = 0, count = 0;

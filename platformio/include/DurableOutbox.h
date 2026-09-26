@@ -9,8 +9,8 @@ inline uint16_t durableOutboxMetadata(uint8_t head, uint8_t count) {
   return static_cast<uint16_t>(head) | (static_cast<uint16_t>(count) << 8);
 }
 
-inline void durableOutboxKey(uint8_t slot, char (&key)[4]) {
-  std::snprintf(key, sizeof(key), "q%02u", slot);
+inline void durableOutboxKey(uint8_t slot, char (&key)[5]) {
+  std::snprintf(key, sizeof(key), "q%02u", static_cast<unsigned>(slot));
 }
 
 template <typename Text, typename Storage>
@@ -19,7 +19,7 @@ bool appendDurableOutbox(Text* items, uint8_t& head, uint8_t& count,
                          size_t payloadCapacity, Storage& storage) {
   if (!payload.length() || payload.length() >= payloadCapacity || count >= capacity) return false;
   const uint8_t slot = (head + count) % capacity;
-  char key[4];
+  char key[5];
   durableOutboxKey(slot, key);
   if (storage.putString(key, payload) != payload.length()) return false;
   if (storage.putUShort("qm", durableOutboxMetadata(head, count + 1)) != sizeof(uint16_t)) {
@@ -42,7 +42,7 @@ bool removeDurableOutbox(Text* items, uint8_t& head, uint8_t& count,
   head = nextHead;
   count = nextCount;
   items[oldHead] = "";
-  char key[4];
+  char key[5];
   durableOutboxKey(oldHead, key);
   storage.remove(key);
   return true;
@@ -56,7 +56,7 @@ bool restoreDurableOutbox(Text* items, uint8_t& head, uint8_t& count,
   count = metadata >> 8;
   if (head >= capacity || count > capacity) return false;
   for (uint8_t i = 0; i < count; ++i) {
-    char key[4];
+    char key[5];
     durableOutboxKey((head + i) % capacity, key);
     items[(head + i) % capacity] = storage.getString(key, "");
     if (!items[(head + i) % capacity].length()) return false;
