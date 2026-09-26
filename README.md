@@ -79,6 +79,8 @@ pio run -e sticks3-send-check
 
 StickS3では、Unit QRCodeの読取り、Wi-Fi接続、Apps Script経由のGoogle Sheets記録まで実機で確認済みです。
 
+StickS3は給電後800ms待ってUnitの通常モードを確認し、ブートモード時だけ電源を切り替えず復帰命令を一度送ります。`READER RESUME`は確認中、`RECOVERY HOLD`は未確認のまま再送せず停止した状態です。本体Aボタンで再試行せず、[起動確認とエラー別の対処](docs/setup.md#sticks3の起動確認と切り分け)を参照してください。ブート復帰は実機未検証で、未送信イベントを保持します。
+
 ## Arduino IDE環境
 
 Arduino IDE 2.x用のスケッチは[`arduino/M5Stack_Inventory`](arduino/M5Stack_Inventory/)にあります。GitHubからのダウンロード後、フォルダー内の`M5Stack_Inventory.ino`を開いて使えます。Arduino IDE版だけを配布する場合は[ZIP版](docs/downloads/M5Stack_Inventory_ArduinoIDE.zip)を使えます。
@@ -117,7 +119,7 @@ PC上で実際の`InventoryDisplay.h`をM5GFXのSDLバックエンドへ渡し�
 |---|---|---|
 | ![StickS3 SYNCING](docs/assets/display-sticks3/syncing.png) | ![StickS3 ALL SAVED](docs/assets/display-sticks3/all-saved.png) | ![StickS3 STORAGE FULL](docs/assets/display-sticks3/queue-full.png) |
 
-StickS3の画面構成は[技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)の最終ページにも掲載しています。
+StickS3の画面構成は[技術者向け構築・検証ガイド（PDF）](docs/M5Stack_Inventory_Guide.pdf)の22ページ、起動確認とブート復帰は23ページにも掲載しています。
 
 `2/5 SAVED`は今回の再送対象5件のうち2件を確認済みという意味です。再送中の新しい読取りは分母へ追加せず、全体の`UNSENT`に即時反映します。AtomS3は再送進捗とコードの表示を切り替え、StickS3はコードと進捗を同時に表示します。新しい読取りの表示を優先します。
 

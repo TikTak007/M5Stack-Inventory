@@ -48,7 +48,8 @@ with Pillow installed.
 
 ## Save status fixtures and state tests
 
-Each device capture run now creates 23 synthetic states, including fixed-batch
+Each device capture run creates 29 synthetic states, including reader startup,
+boot-mode resume, recovery hold, fixed-batch
 progress, a read during retry, rejection after storage space frees, two-digit
 counts, long codes, and battery values 0%, 100%, and unavailable. `UNSENT`
 includes the request in flight. AtomS3 shows batch progress in the bottom panel
@@ -69,3 +70,9 @@ These tests cover durable metadata
 failure, the 17th read rejection, FIFO wrap and restart, strict typed ACK fields,
 fixed batch progress, and foreground scan ownership. They do not measure
 physical scan intervals or confirm a live Google Sheets save.
+
+Reader startup tests also cover one boot-exit request, persistence before the
+request, restart while confirmation is pending, and success-only guard clearing.
+While pending, only the normal reader address is probed: even an empty probe of
+the bootloader can repeat its previous command. These are synthetic tests, not
+proof that a connected Unit supports or has executed the return command.

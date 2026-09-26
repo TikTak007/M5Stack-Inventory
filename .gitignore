@@ -15,3 +15,5 @@ output/
 # Editor settings
 .vscode/
 .idea/
+
+docs/assets/display-sticks3/*.ppm

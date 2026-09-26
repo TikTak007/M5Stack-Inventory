@@ -14,12 +14,16 @@
 #include "InventoryDisplay.h"
 #include "SaveStatus.h"
 #include "DurableOutbox.h"
+#include "ReaderStartup.h"
+#include "StickPowerStartup.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include <nvs.h>
+#include <driver/gpio.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -27,14 +31,15 @@
 #include "secrets.h"
 
 namespace {
+// 公開プロトコルPDFの版にある0x00F0表記ではなく、Unitの実装と一致する定義を使う。
+static_assert(FIRMWARE_VERSION_REG == 0x00FE, "Check Unit QRCode firmware version register");
 constexpr uint32_t kResultHoldMs = 5000;
 constexpr uint32_t kNoCodeHoldMs = 1800;
 constexpr uint32_t kWifiRetryMs = 10000;
 constexpr uint32_t kPendingRetryMs = 10000;
 constexpr uint32_t kNextQueueSendDelayMs = 800;
 constexpr uint32_t kScannerPollMs = 10;
-constexpr uint32_t kScannerStartupRetryMs = 400;
-constexpr uint8_t kScannerStartupAttempts = 10;
+constexpr uint32_t kReaderQuietBootMs = 800;
 constexpr uint32_t kBatteryRefreshMs = 10000;
 constexpr uint32_t kAnimationMs = 180;
 constexpr uint32_t kCountdownRefreshMs = 250;
@@ -580,24 +585,277 @@ void serviceScreen() {
   }
 }
 
+// 起動診断には電源・バス状態だけを出力し、コード本文や認証情報を含めない。
+#ifndef INVENTORY_READER_DIAGNOSTICS
+#define INVENTORY_READER_DIAGNOSTICS 1
+#endif
+
+void readerDiagnostic(const char* stage, int32_t value = -1) {
+#if INVENTORY_READER_DIAGNOSTICS
+  Serial.printf("READER t=%lu stage=%s value=%ld\n",
+                static_cast<unsigned long>(millis()), stage, static_cast<long>(value));
+#else
+  (void)stage;
+  (void)value;
+#endif
+}
+
+// GPIO46は機種によって役割が異なるため、StickS3向けビルドだけに適用する。
+#if defined(INVENTORY_STICKS3_BUILD) || defined(ARDUINO_M5STACK_STICKS3)
+class StickStartupBoard {
+ public:
+  explicit StickStartupBoard(m5::M5Unified::config_t config)
+      : config_(config), brightness_(M5.Display.getBrightness()) {}
+
+  bool detectStick() {
+    // 機種判定中のバックライト負荷を増やさない。復元は電源初期化後に行う。
+    M5.Display.setBrightness(0);
+    return M5.Display.init() && M5.Display.getBoard() == m5::board_t::board_M5StickS3;
+  }
+
+  bool holdIrOff() {
+    if (!setIrLow() || gpio_hold_en(GPIO_NUM_46) != ESP_OK) return false;
+    readerDiagnostic("ir-held-off");
+    return true;
+  }
+
+  bool begin() {
+    // M5Unified 0.2.22はbegin内でG46をHighにする。保持中は端子のLOWを維持する。
+    readerDiagnostic("m5-begin-ir-protected");
+    M5.begin(config_);
+    return M5.getBoard() == m5::board_t::board_M5StickS3;
+  }
+
+  bool releaseIrOff() {
+    // 保持解除より先に出力レジスタをLOWへ戻し、解除時の点灯を防ぐ。
+    if (!setIrLow() || gpio_hold_dis(GPIO_NUM_46) != ESP_OK) return false;
+    const int level = gpio_get_level(GPIO_NUM_46);
+    readerDiagnostic("ir-off-released", level);
+    return level == 0;
+  }
+
+  void restoreBrightness() { M5.Display.setBrightness(brightness_); }
+
+ private:
+  m5::M5Unified::config_t config_;
+  uint8_t brightness_;
+
+  bool setIrLow() {
+    if (gpio_set_level(GPIO_NUM_46, 0) != ESP_OK) return false;
+    gpio_config_t pin = {};
+    pin.pin_bit_mask = 1ULL << GPIO_NUM_46;
+    // 入力も有効にして、消灯レベルを読み戻せるようにする。
+    pin.mode = GPIO_MODE_INPUT_OUTPUT;
+    pin.pull_up_en = GPIO_PULLUP_DISABLE;
+    pin.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    pin.intr_type = GPIO_INTR_DISABLE;
+    return gpio_config(&pin) == ESP_OK && gpio_get_level(GPIO_NUM_46) == 0;
+  }
+};
+#endif
+
+// 復帰要求が未確認の間は、再起動をまたいでも同じ要求を繰り返さない。
+// inventoryの保存領域と、以前の電源試行数キーには触れない。
+class ReaderResumeGuard {
+ public:
+  ~ReaderResumeGuard() { if (opened_) nvs_close(handle_); }
+
+  bool readPending(bool& pending) {
+    if (!opened_) opened_ = nvs_open("readerboot", NVS_READWRITE, &handle_) == ESP_OK;
+    if (!opened_) { readerDiagnostic("boot-guard-read", -1); return false; }
+    uint8_t value = 0;
+    const auto result = nvs_get_u8(handle_, "exit_pending", &value);
+    if (result == ESP_ERR_NVS_NOT_FOUND) value = 0;
+    else if (result != ESP_OK || value > 1) {
+      readerDiagnostic("boot-guard-read", -1);
+      return false;
+    }
+    pending = value != 0;
+    readerDiagnostic("boot-guard-read", value);
+    return true;
+  }
+
+  bool writePending(bool pending) {
+    const bool saved = opened_
+        && nvs_set_u8(handle_, "exit_pending", pending ? 1 : 0) == ESP_OK
+        && nvs_commit(handle_) == ESP_OK;
+    readerDiagnostic(pending ? "boot-exit-reserved" : "boot-exit-cleared", saved ? 1 : -1);
+    return saved;
+  }
+
+ private:
+  nvs_handle_t handle_ = 0;
+  bool opened_ = false;
+};
+
+class ReaderStartupPort {
+ public:
+  ReaderStartupPort(int8_t sda, int8_t scl) : sda_(sda), scl_(scl) {}
+
+  inventory::ReaderStartupResult prepare(bool checkPower) {
+    showScreen(InventoryScreen::boot, "", "READER START");
+    Wire.end();
+    if (sda_ < 0 || scl_ < 0 || sda_ == scl_) return inventory::ReaderStartupResult::bus;
+    // 非給電中の信号線からの回り込みを避けるため、Highを強制出力しない。
+    pinMode(sda_, INPUT);
+    pinMode(scl_, INPUT);
+    readerDiagnostic("prepare");
+    // Unitの起動時モード判定中はI2C通信しない。通常運転の待ち時間には使わない。
+    delay(checkPower ? kReaderQuietBootMs : 10);
+    if (checkPower && !waitVoltage(1200)) return inventory::ReaderStartupResult::power;
+    readerDiagnostic("sda", digitalRead(sda_));
+    readerDiagnostic("scl", digitalRead(scl_));
+    if (!digitalRead(sda_) || !digitalRead(scl_)) return inventory::ReaderStartupResult::bus;
+    Wire.setBufferSize(512);
+    Wire.setTimeOut(50);
+    if (!Wire.begin(sda_, scl_, 100000U)) return inventory::ReaderStartupResult::i2c;
+    readerDiagnostic("wire-ready");
+    return inventory::ReaderStartupResult::ready;
+  }
+
+  inventory::ReaderStartupResult connect() {
+    return inventory::connectReader(*this, guard_);
+  }
+
+  bool normalAvailable() {
+    const uint8_t result = probe(UNIT_QRCODE_ADDR);
+    readerDiagnostic("ack-21", result);
+    return result == 0;
+  }
+
+  bool bootAvailable() {
+    const uint8_t result = probe(inventory::kReaderBootAddress);
+    readerDiagnostic("ack-54", result);
+    return result == 0;
+  }
+
+  void showResume() { showScreen(InventoryScreen::boot, "", "READER RESUME"); }
+  uint32_t now() { return millis(); }
+  void pause(uint32_t milliseconds) { delay(milliseconds); }
+
+  void requestBootExit() {
+    // 公式ブートローダーの通常アプリ移行命令。電源切替・Flash更新は要求しない。
+    Wire.beginTransmission(inventory::kReaderBootAddress);
+    if (Wire.write(inventory::kReaderBootExitCommand) != 1) {
+      readerDiagnostic("boot-exit-write", -1);
+      return;
+    }
+    const uint8_t status = Wire.endTransmission(true);
+    readerDiagnostic("boot-exit-write", status);
+  }
+
+  void failed(inventory::ReaderStartupResult result) {
+    Serial.printf("QR reader startup failed: %s; automatic power cycling disabled\n",
+                  inventory::readerStartupError(result));
+  }
+
+ private:
+  int8_t sda_;
+  int8_t scl_;
+  ReaderResumeGuard guard_;
+  bool waitVoltage(uint32_t timeoutMs) {
+    const uint32_t start = millis();
+    uint8_t stable = 0;
+    while (millis() - start < timeoutMs) {
+      uint8_t bytes[2] = {};
+      // 戻り値のない電圧APIで0mVを通信成功と誤認しないよう、転送結果も確認する。
+      const bool valid = M5.In_I2C.readRegister(0x6E, 0x26, bytes, sizeof(bytes), 100000U);
+      const uint16_t mv = static_cast<uint16_t>(bytes[0]) | (static_cast<uint16_t>(bytes[1]) << 8);
+      readerDiagnostic("power-on-mv", valid ? mv : -1);
+      const bool inRange = inventory::readerVoltageAcceptable(valid, mv);
+      stable = inRange ? stable + 1 : 0;
+      if (stable >= 3) return true;
+      delay(100);
+    }
+    return false;
+  }
+
+  uint8_t probe(uint8_t address) {
+    Wire.beginTransmission(address);
+    return Wire.endTransmission();
+  }
+
+  bool readByte(uint16_t reg, uint8_t& value) {
+    Wire.beginTransmission(UNIT_QRCODE_ADDR);
+    Wire.write(static_cast<uint8_t>(reg));
+    Wire.write(static_cast<uint8_t>(reg >> 8));
+    if (Wire.endTransmission(false) != 0) return false;
+    if (Wire.requestFrom(static_cast<uint8_t>(UNIT_QRCODE_ADDR), static_cast<uint8_t>(1)) != 1 ||
+        Wire.available() != 1) return false;
+    value = static_cast<uint8_t>(Wire.read());
+    return true;
+  }
+
+  bool writeByte(uint16_t reg, uint8_t value) {
+    Wire.beginTransmission(UNIT_QRCODE_ADDR);
+    Wire.write(static_cast<uint8_t>(reg));
+    Wire.write(static_cast<uint8_t>(reg >> 8));
+    Wire.write(value);
+    return Wire.endTransmission() == 0;
+  }
+
+ public:
+  inventory::ReaderStartupResult configure() {
+    uint8_t version = 0;
+    uint8_t mode = 0;
+    uint8_t key = 0;
+    if (!readByte(FIRMWARE_VERSION_REG, version) || version == 0 || version == 0xFF)
+      return inventory::ReaderStartupResult::configuration;
+    readerDiagnostic("firmware", version);
+    // 初回レジスタ通信はUnit内部のUARTも初期化する。設定コマンドが重ならないよう間を置く。
+    if (!writeByte(UNIT_QRCODE_TRIGGER_MODE_REG, 1)) return inventory::ReaderStartupResult::configuration;
+    delay(20);
+    if (!writeByte(UNIT_QRCODE_TRIGGER_MODE_REG, 1)) return inventory::ReaderStartupResult::configuration;
+    delay(20);
+    if (!writeByte(UNIT_QRCODE_TRIGGER_REG, 0)) return inventory::ReaderStartupResult::configuration;
+    delay(20);
+    if (!readByte(UNIT_QRCODE_TRIGGER_MODE_REG, mode) || mode != 1 ||
+        !readByte(UNIT_QRCODE_TRIGGER_KEY_REG, key) || key > 1)
+      return inventory::ReaderStartupResult::configuration;
+    // ライブラリの通信先を設定する。Wireは上で初期化・検証済み。
+    if (!scanner.begin(&Wire, UNIT_QRCODE_ADDR, sda_, scl_, 100000U))
+      return inventory::ReaderStartupResult::i2c;
+    lastTriggerKey = key;
+    triggerKeyKnown = true;
+    triggerHeld = key == 0;
+    readerDiagnostic("manual-mode", mode);
+    readerDiagnostic("trigger-key", key);
+    return inventory::ReaderStartupResult::ready;
+  }
+};
+
 void setup() {
-  auto config = M5.config();
-  config.output_power = true;
-  M5.begin(config);
   Serial.begin(115200);
+  readerDiagnostic("reset-reason", esp_reset_reason());
+  auto config = M5.config();
+  // 本体初期化時に給電を有効にし、その後は読取器の電源を入れ直さない。
+  config.output_power = true;
+  config.internal_mic = false;
+  config.internal_spk = false;
+  config.internal_imu = false;
+  config.internal_rtc = false;
+  config.external_display_value = 0;
+#if defined(INVENTORY_STICKS3_BUILD) || defined(ARDUINO_M5STACK_STICKS3)
+  StickStartupBoard board(config);
+  const auto powerResult = inventory::beginStickWithIrOff(board);
+  board.restoreBrightness();
+  if (powerResult != inventory::StickPowerStartupResult::ready) {
+    const char* reason = inventory::stickPowerStartupError(powerResult);
+    Serial.printf("Device startup failed: %s\n", reason);
+    if (M5.Display.getBoard() != m5::board_t::board_unknown && inventoryDisplay.begin()) {
+      showScreen(InventoryScreen::error, "", reason);
+    }
+    while (true) delay(100);
+  }
+#else
+  M5.begin(config);
+#endif
+  readerDiagnostic("m5-ready", M5.getBoard());
   batterySupported = M5.getBoard() == m5::board_t::board_M5StickS3;
   if (batterySupported) {
     const int32_t level = M5.Power.getBatteryLevel();
     batteryPercent = level < 0 ? -1 : level > 100 ? 100 : level;
     lastBatterySampleAt = millis();
-  }
-  bool externalPower = M5.Power.getExtOutput();
-  Serial.printf("PORT.A external power after startup: %s\n", externalPower ? "ON" : "OFF");
-  if (!externalPower) {
-    M5.Power.setExtOutput(true);
-    delay(200);
-    externalPower = M5.Power.getExtOutput();
-    Serial.printf("PORT.A external power after retry: %s\n", externalPower ? "ON" : "OFF");
   }
 
   if (!inventoryDisplay.begin()) Serial.println("Display sprite allocation failed");
@@ -611,6 +869,7 @@ void setup() {
     showScreen(InventoryScreen::error, "", "QUEUE STORAGE");
     while (true) delay(100);
   }
+  Serial.printf("Durable queue restored; count=%u\n", outboxCount);
 
   sendJobs = xQueueCreate(1, sizeof(SendJob));
   sendResults = xQueueCreate(1, sizeof(SendResult));
@@ -623,38 +882,13 @@ void setup() {
   const int8_t sda = M5.getPin(m5::pin_name_t::port_a_sda);
   const int8_t scl = M5.getPin(m5::pin_name_t::port_a_scl);
   Serial.printf("PORT.A I2C pins: SDA=%d SCL=%d\n", sda, scl);
-  bool scannerReady = scanner.begin(&Wire, UNIT_QRCODE_ADDR, sda, scl, 100000U);
-  // 外部5Vの立ち上がりが遅い場合、最初のI2C応答だけで故障と判定しない。
-  for (uint8_t attempt = 1; !scannerReady && attempt < kScannerStartupAttempts; ++attempt) {
-    delay(kScannerStartupRetryMs);
-    Wire.beginTransmission(UNIT_QRCODE_ADDR);
-    const uint8_t i2cStatus = Wire.endTransmission();
-    scannerReady = i2cStatus == 0;
-    Serial.printf("QR reader startup probe %u/%u: I2C status=%u\n",
-                  attempt + 1, kScannerStartupAttempts, i2cStatus);
-  }
-  if (!scannerReady) {
-    Serial.print("PORT.A responding I2C addresses:");
-    for (uint8_t address = 0x08; address <= 0x77; ++address) {
-      Wire.beginTransmission(address);
-      if (Wire.endTransmission() == 0) Serial.printf(" 0x%02X", address);
-    }
-    Serial.println();
-    Serial.println("QR reader unavailable on PORT.A; check Grove cable and I2C mode");
-    showScreen(InventoryScreen::error, "", "QR READER");
+  ReaderStartupPort readerPort(sda, scl);
+  const auto readerResult = inventory::startReader(readerPort, batterySupported);
+  if (readerResult != inventory::ReaderStartupResult::ready) {
+    showScreen(InventoryScreen::error, "", inventory::readerStartupError(readerResult));
     while (true) delay(100);
   }
   Serial.println("QR reader ready");
-  Wire.setBufferSize(512);
-  scanner.setTriggerMode(MANUAL_SCAN_MODE);
-  scanner.setDecodeTrigger(false);
-
-  const uint8_t initialTriggerKey = scanner.getTriggerKeyStatus();
-  if (initialTriggerKey <= 1) {
-    lastTriggerKey = initialTriggerKey;
-    triggerKeyKnown = true;
-    triggerHeld = initialTriggerKey == 0;
-  }
 
   beginWifi();
   if (outboxCount) {
