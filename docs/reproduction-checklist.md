@@ -6,7 +6,8 @@
 
 - Unit QRCodeのTRIG入力、端末の不揮発キュー、HTTPS送信、Apps Script、Scans、ProductMaster、Inventoryの関係を説明できる。
 - Scansが在庫履歴、Inventoryが履歴から集計された表示、ProductMasterが商品情報であることを区別できる。
-- 端末の`SAVED`が、HTTP成功だけでなくApps Scriptの書込みと読戻し確認を意味すると説明できる。
+- 端末の`SAVED`が、HTTP成功だけでなくApps Scriptの書込み後にevent_idとcodeを照合する読戻し確認を意味すると説明できる。
+- SAVED（対象1件）、ALL SAVED（端末の全件完了）、READY（次の受付可能）の違いと、UNSENTが送信中も含む未確認件数であることを説明できる。
 
 ## 同じ環境を作れる
 
@@ -21,8 +22,12 @@
 
 - 新規イベント、同じIDの再送、新しいIDで同じコード、異なるコードで同じIDを試験できる。
 - Wi-Fi切断、再起動、復旧後の再送でも二重加算されないことを確認できる。
+- 別IDの成功応答、verified欠落/false、同じコード・異なるIDの読戻しを成功としないことを検証できる。
+- 0/1/15/16件と17件目の拒否を確認し、満杯時は空きができてから再スキャンできる。
+- 固定した再送分母、途中失敗で分子が増えないこと、途中の追加読取り、全件完了、背景通信とTRIGの表示優先を確認できる。
+- 次の受付間隔とScans保存確認時間を分け、合成試験・ビルド・実機・Google確認の範囲を記録できる。
 - ContentServiceの302/303では転送先をGETし、共有キー付きPOSTを転送しない理由を理解できる。
-- `UNAUTHORIZED`、`NOT_CONFIGURED`、`PENDING`、`SCHEMA_MISMATCH`の確認箇所が分かる。
+- `UNAUTHORIZED`、`NOT_CONFIGURED`、`STORED / WAIT WIFI`、`SCHEMA_MISMATCH`の確認箇所が分かる。
 
 ## 運用上の境界を理解できる
 

@@ -15,6 +15,18 @@ jobs:
       - name: Run Apps Script tests
         run: node --test tests/ingest.test.cjs
 
+  device-state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: bblanchon/ArduinoJson
+          ref: v7.2.1
+          path: tmp/test-deps/ArduinoJson
+      - name: Verify durable FIFO, typed ACK and status transitions
+        run: python3 tools/display-simulator/tests/run_tests.py
+
   firmware:
     runs-on: ubuntu-latest
     steps:

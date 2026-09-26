@@ -9,11 +9,13 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from sync_arduino_sketch import ROOT, SKETCH, expected_files
 
 
-OUTPUT = ROOT / "output" / "arduino" / "M5Stack_Inventory_ArduinoIDE.zip"
+OUTPUT = ROOT / "docs" / "downloads" / "M5Stack_Inventory_ArduinoIDE.zip"
 # secrets.hは意図的に含めず、利用者がsecrets.example.hから作成する。
 PACKAGE_FILES = (
     SKETCH / "M5Stack_Inventory.ino",
     SKETCH / "InventoryDisplay.h",
+    SKETCH / "SaveStatus.h",
+    SKETCH / "DurableOutbox.h",
     SKETCH / "secrets.example.h",
     SKETCH / "README.md",
 )

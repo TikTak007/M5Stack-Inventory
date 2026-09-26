@@ -18,7 +18,8 @@ codeは1〜512文字のテキスト。機器側は512バイトまで。制御文
 
 保存・読戻し成功：`{"ok":true,"eventId":"test-event-0000000001","duplicate":false,"verified":true}`。
 同じeventIdの再送ではduplicate=true。加算せず、読戻し成功時は同じくverified=trueを返す。
-端末はokとeventIdに加えてverified=trueを確認した場合だけSAVEDにする。
+新規登録と同一イベント再送の両方で、Apps Scriptはflush後に取得した対象行の2列を使い、event_idとcodeの両方が要求と一致する場合だけverified=trueを返す。ID不一致、コード不一致、欠損、読取り例外はSTORAGE_ERRORとする。この照合のためにシート読取りやHTTP要求を追加しない。
+端末はok=true、要求と一致するeventId、verified=trueを確認し、永続キューの削除にも成功した場合だけSAVEDにする。duplicate=true単独では確認済みと扱わない。SAVEDはScans保存確認であり、Inventoryの描画や製品情報更新の完了とは別。
 失敗：`{"ok":false,"error":"BUSY"}` 等。HTTP 200でも失敗の場合がある。
 UNAUTHORIZED / NOT_CONFIGURED / INVALID_REQUEST / SCHEMA_MISMATCH / EVENT_CONFLICT は設定やデータを修正する。
 BUSY / STORAGE_ERROR / 通信タイムアウトでは同じIDで再試行する。
