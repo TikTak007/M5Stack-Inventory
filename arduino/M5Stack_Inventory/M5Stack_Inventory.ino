@@ -15,6 +15,7 @@
 #include "SaveStatus.h"
 #include "DurableOutbox.h"
 #include "ReaderStartup.h"
+#include "ReaderReply.h"
 #include "StickPowerStartup.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -451,6 +452,10 @@ void handleDecoded(uint16_t length) {
 
   uint8_t buffer[513] = {};
   scanner.getDecodeData(buffer, length);
+  if (isReaderSuccessReply(buffer, length)) {
+    Serial.printf("Reader command replies consumed; frames=%u\n", length / 5);
+    return;
+  }
   scanHandledForPress = true;
 
   printCaptureMetadata(buffer, length);

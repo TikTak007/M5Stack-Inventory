@@ -21,6 +21,7 @@ def expected_files() -> dict[Path, bytes]:
         SKETCH / "SaveStatus.h": (FIRMWARE / "include" / "SaveStatus.h").read_bytes(),
         SKETCH / "DurableOutbox.h": (FIRMWARE / "include" / "DurableOutbox.h").read_bytes(),
         SKETCH / "ReaderStartup.h": (FIRMWARE / "include" / "ReaderStartup.h").read_bytes(),
+        SKETCH / "ReaderReply.h": (FIRMWARE / "include" / "ReaderReply.h").read_bytes(),
         SKETCH / "StickPowerStartup.h": (FIRMWARE / "include" / "StickPowerStartup.h").read_bytes(),
         SKETCH / "secrets.example.h": (
             FIRMWARE / "include" / "secrets.example.h"
