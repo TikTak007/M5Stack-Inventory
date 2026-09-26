@@ -72,7 +72,7 @@ class InventoryDisplay {
     switch (view.screen) {
       case InventoryScreen::boot:
         drawActivityIcon(accentFor(view.screen), view.phase);
-        drawStatus("STARTING", "INITIALIZING");
+        drawStatus("STARTING", view.detail.length() ? view.detail.c_str() : "INITIALIZING");
         break;
       case InventoryScreen::ready:
         drawScanFrame(accentFor(view.screen));

@@ -75,6 +75,12 @@ int user_func(bool* running) {
     return 1;
   }
 
+  capture(display, outputDir, "reader-start", InventoryScreen::boot, WifiVisualState::connecting, "", "READER START");
+  capture(display, outputDir, "reader-resume", InventoryScreen::boot, WifiVisualState::offline, "", "READER RESUME");
+  capture(display, outputDir, "reader-recovery-hold", InventoryScreen::error, WifiVisualState::offline, "", "RECOVERY HOLD");
+  capture(display, outputDir, "reader-power-error", InventoryScreen::error, WifiVisualState::offline, "", "READER POWER");
+  capture(display, outputDir, "reader-config-error", InventoryScreen::error, WifiVisualState::offline, "", "READER CONFIG");
+  capture(display, outputDir, "reader-storage-error", InventoryScreen::error, WifiVisualState::offline, "", "READER STORAGE");
   capture(display, outputDir, "ready", InventoryScreen::ready, WifiVisualState::online);
   capture(display, outputDir, "scanning", InventoryScreen::scanning, WifiVisualState::online, "", "", 1);
   capture(display, outputDir, "queued", InventoryScreen::queued, WifiVisualState::online, "C145", "AUTO RETRY", 0, 1);
@@ -100,7 +106,7 @@ int user_func(bool* running) {
 
   capture(display, outputDir, "rejected-space-freed", InventoryScreen::full, WifiVisualState::online, "C145", "NOT ACCEPTED", 0, 15);
 
-  std::cout << "Captured 23 states in " << outputDir << "\n";
+  std::cout << "Captured 29 states in " << outputDir << "\n";
   SDL_Event quitEvent{};
   quitEvent.type = SDL_QUIT;
   SDL_PushEvent(&quitEvent);

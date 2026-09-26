@@ -10,7 +10,7 @@ import tempfile
 
 def main():
     root = Path(__file__).resolve().parents[3]
-    candidates = [root / "platformio/include", root / "01_開発・ソース/firmware/include"]
+    candidates = [root / "platformio/include"]
     include = next((p for p in candidates if (p / "SaveStatus.h").is_file()), None)
     if include is None:
         raise SystemExit("Firmware headers not found")

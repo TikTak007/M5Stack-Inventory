@@ -16,6 +16,8 @@ PACKAGE_FILES = (
     SKETCH / "InventoryDisplay.h",
     SKETCH / "SaveStatus.h",
     SKETCH / "DurableOutbox.h",
+    SKETCH / "ReaderStartup.h",
+    SKETCH / "StickPowerStartup.h",
     SKETCH / "secrets.example.h",
     SKETCH / "README.md",
 )

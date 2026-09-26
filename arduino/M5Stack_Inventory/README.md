@@ -9,7 +9,7 @@ AtomS3またはStickS3とUnit QRCodeを使う在庫管理スケッチです。Pl
 - 通信：2.4GHz Wi-FiからApps Script WebアプリへHTTPS送信
 - 表示：M5Unified + M5GFX Sprite
 - PORT.Aピンと画面サイズはM5Unifiedから取得し、機種に合わせて表示する
-- 機種・開発環境ごとの今回のビルドと実機確認は[検証記録](../../docs/reproduction-checklist.md)を参照
+- 機種・開発環境ごとの今回のビルドと実機確認は[検証記録](https://github.com/TikTak007/M5Stack-Inventory/blob/main/docs/validation.md)を参照
 
 ## 1. Arduino IDEとボードを準備
 
@@ -21,10 +21,12 @@ AtomS3またはStickS3とUnit QRCodeを使う在庫管理スケッチです。Pl
    ```
 
 3. ボードマネージャから`M5Stack`をインストールします。
-4. `ツール` → `ボード`で接続する機種に対応するボードを選択します。AtomS3は`M5AtomS3`です。StickS3の選択・書込みはインストールしたM5Stackボードパッケージの対応を確認してください。
+4. `ツール` → `ボード`で、AtomS3は`M5AtomS3`、StickS3は`M5StickS3`を選択します。StickS3では`PSRAM`を`OPI PSRAM`、`Partition Scheme`を`8M with spiffs (3MB APP/1.5MB SPIFFS)`に設定します。
 5. `USB CDC On Boot`を`Enabled`、シリアルモニタを`115200 bps`にします。
 
 検証済みボードパッケージは`M5Stack 3.3.7`です。
+
+StickS3では専用のボード定義を使ってください。`ESP32S3 Dev Module`などの汎用ボードでは、StickS3の赤外線LEDを初期化中から消灯する処理が選択されません。PlatformIOでは`sticks3`または`sticks3-send-check`環境がこの処理を有効にします。
 
 ## 2. ライブラリをインストール
 
@@ -39,13 +41,13 @@ Arduino IDEの`ツール` → `ライブラリを管理`から次をインスト
 
 `WiFi`、`WiFiClientSecure`、`HTTPClient`、`Preferences`はM5Stack ESP32ボードパッケージに含まれます。
 
-`M5UnitQRCode` 1.0.0はArduino IDEのライブラリマネージャーから導入でき、このスケッチでコンパイル確認済みです。PlatformIO版はGitHubの現行ソースに合わせて1.0.1を使用していますが、本ファームウェアが使用するAPIは1.0.0と互換です。
+`M5UnitQRCode` 1.0.0はArduino IDEのライブラリマネージャーから導入でき、過去の版でコンパイル確認済みです。今回の起動復帰候補のArduino CLI検証は1.0.1を使った限定検証です。詳しい範囲は[検証記録](https://github.com/TikTak007/M5Stack-Inventory/blob/main/docs/validation.md)を参照してください。PlatformIO版は1.0.1を使用しますが、本ファームウェアが使用するAPIは1.0.0と互換です。
 
 ## 3. スケッチを設定
 
 1. この`M5Stack_Inventory`フォルダー全体をArduinoのスケッチブックへコピーします。フォルダー名と`.ino`名を同じにします。
 2. `secrets.example.h`を同じフォルダー内で`secrets.h`という名前で複製します。
-3. `secrets.h`へWi-Fi、Apps Scriptの`/exec` URL、Google側と同じ`DEVICE_KEY`、現在有効なルートCAを設定します。各値の入手とApps Script側の配置は[セットアップ手順](../../docs/apps-script-setup.md)を参照してください。
+3. `secrets.h`へWi-Fi、Apps Scriptの`/exec` URL、Google側と同じ`DEVICE_KEY`、現在有効なルートCAを設定します。各値の入手とApps Script側の配置は[セットアップ手順](https://github.com/TikTak007/M5Stack-Inventory/blob/main/docs/apps-script-setup.md)を参照してください。
 4. 送信を有効にする場合は、`secrets.h`の末尾へ次を追加するか、既存定義を`false`へ変更します。
 
    ```cpp
@@ -65,6 +67,8 @@ Arduino IDEの`ツール` → `ライブラリを管理`から次をインスト
 `UNSENT n`は送信中も含む未確認件数、`READY`は次の受付可能、`SAVED`は表示中の1件のScans保存確認、`ALL SAVED`は端末の全件完了です。通信断でも最大16件を電源再投入後まで保持し、復旧後に同じイベントIDで再送します。`2/5 SAVED`の分母は再送開始時の件数に固定し、途中の追加読取りは後続の対象になります。
 
 `STORAGE FULL / 16/16`では今回の読取りを受け付けていません。空きができてから再スキャンしてください。`LOCAL STORAGE`では端末内保存済みと扱いません。リーダー音だけでは受付成功を判断できません。
+
+起動時にUnitがブートモードで応答した場合は、`READER RESUME`を表示して通常モードへの復帰を一度だけ要求します。通常アドレスと設定を確認すると起動を続けます。確認前に本体が再起動しても命令は繰り返しません。`RECOVERY HOLD`で停止した場合は自動復帰を確認できなかった状態です。繰り返しリセットせず、接続・電源を確認してください。未送信の在庫データは保持します。この処理は電源供給能力を増やすものではありません。
 
 ## よくある問題
 
@@ -86,4 +90,4 @@ python3 tools/sync_arduino_sketch.py
 python3 tools/sync_arduino_sketch.py --check
 ```
 
-`M5Stack_Inventory.ino`、`InventoryDisplay.h`、`SaveStatus.h`、`DurableOutbox.h`を含む動作部分を同期します。両環境へ同じ修正を反映する場合はPlatformIO版を編集してから同期してください。
+`M5Stack_Inventory.ino`、`InventoryDisplay.h`、`SaveStatus.h`、`DurableOutbox.h`、`ReaderStartup.h`、`StickPowerStartup.h`を含む動作部分を同期します。両環境へ同じ修正を反映する場合はPlatformIO版を編集してから同期してください。
