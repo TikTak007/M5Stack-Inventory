@@ -12,7 +12,7 @@ M5Stack製品のSKUを表す2次元バーコードをUnit QRCodeで読み取り�
 
 ## StickS3とUnit QRCode（U173）の起動時トラブル
 
-この組み合わせで、起動時の画面暗転・再起動やI2C認識不良が発生した事例を記録しています。[症状・切り分け・対策をまとめた技術メモ](docs/sticks3-unit-qrcode-startup-troubleshooting.md)をご覧ください。対策後は翌日の確認でも再発せず、2026-09-27に本件を完了としました。電圧降下の波形は未測定で、ブート復帰と`CONTROL BYTES`の対策を分けて説明しています。
+起動時に画面が暗転して再起動する、読取器を認識しない場合は、[症状・原因の仮説・対策をまとめた技術メモ](docs/sticks3-unit-qrcode-startup-troubleshooting.md)を参照してください。
 
 ## 主な機能
 

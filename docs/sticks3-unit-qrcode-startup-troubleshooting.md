@@ -1,12 +1,10 @@
 # M5Stack StickS3＋Unit QRCode（U173）の起動時再起動・I2C認識不良と対策
 
-記録日：2026-09-27　／　K Visualization Studio・T.KAMIKURA
-
-**本プロジェクトでは対策後、翌日の確認でも再発せず、2026-09-27に対策完了としました。** この記録は一組の実機での事例です。起動時の電源相性を疑った経緯、実装した復帰処理、別途見つかった読取りデータの問題をまとめています。電圧降下の波形は未測定であり、すべての同型機や給電条件での解消を保証するものではありません。
+StickS3にUnit QRCodeを接続した際、起動時に本体が再起動し、読取器のI2C認識が不安定になる症状と対策をまとめています。電源変動とブートモードの関係、復帰処理、設定応答による`CONTROL BYTES`表示の対処を説明します。
 
 ## English summary
 
-A StickS3 connected to a Unit QRCode (U173) showed unexpected restarts and intermittent I2C detection failures during reader startup. The same development setup with AtomS3 did not show this symptom. Power transients are a hypothesis, not a measured brownout. The firmware reduces unnecessary IR load and implements a guarded bootloader return. A separate fix filters exact reader command acknowledgements. No recurrence was reported the following day; this project's incident was closed on 2026-09-27. Actual bootloader return and voltage transients remain unverified.
+A StickS3 connected to a Unit QRCode (U173) showed unexpected restarts and intermittent I2C detection failures during reader startup. The same development setup with AtomS3 did not show this symptom. Power transients are a hypothesis, not a measured brownout. The firmware holds IR TX low during initialization and implements a guarded bootloader return. A separate fix filters exact reader command acknowledgements. Actual bootloader return and voltage transients remain unverified.
 
 ## 使用構成と確認範囲
 
@@ -15,18 +13,16 @@ A StickS3 connected to a Unit QRCode (U173) showed unexpected restarts and inter
 | 本体 | M5Stack StickS3（K150） |
 | 読取器 | M5Stack Unit QRCode（U173）、切替スイッチはI2C |
 | 接続 | 本体Groveポートから5Vを供給、SDA=G9、SCL=G10、100kHz |
-| 最終書込み・リセット確認 | MacにUSB接続したStickS3。電池単独での反復試験は未実施 |
+| 確認時の給電 | MacにUSB接続したStickS3 |
 | 開発環境 | PlatformIO、`sticks3-send-check`、espressif32 6.12.0 |
 | 主なライブラリ | M5Unified 0.2.22、M5GFX 0.2.29、M5UnitQRCode 1.0.1、M5PM1 1.0.7 |
 | Unitの版確認 | 通常アプリのFWレジスタ値は3。接続Unitのブートローダー版は未確認 |
 
-USB電源・ケーブルの電気的条件や、翌日確認の試行回数は記録していません。下記の結果を電池単独の安定性や、多数回の冷間起動試験へ読み替えないでください。
-
-通常の読み取り対象はM5Stack SKUを表す**2次元バーコード**です。「Unit QRCode」は機器の製品名で、読み取るコードがQR形式に限られるという意味ではありません。
+電源・信号線の波形、電池単独での安定性、多数の実機での再現性は未確認です。
 
 ## 起きていた症状
 
-次の表示・操作上の挙動は実機利用者の観測です。電圧波形の測定結果ではありません。
+一組の実機で、次の症状を確認しました。
 
 | 観測 | 状況 |
 |---|---|
@@ -41,7 +37,7 @@ USB電源・ケーブルの電気的条件や、翌日確認の試行回数は�
 
 開発中のI2C診断では、通常アドレス`0x21`が応答せず、`0x54`だけが応答する状態も確認しました。
 
-## 電源変動とブートモードの関係：まだ仮説の部分
+## 考えられる原因：電源変動とブートモード
 
 Grove接続の有無と再起動の関係から、Unit起動時の負荷が本体側の電源へ影響する可能性を疑いました。ただし、Groveの脱着は信号線も変えるため、この比較だけで電圧降下を確定できません。
 
@@ -62,15 +58,15 @@ StickS3ではGrove出力とIR TX/RXの給電が`EXT_5V_EN`で制御されます�
 | ブートモードからの復帰 | 通常`0x21`が応答せず`0x54`が応答した場合だけ、確認待ちを保存してから`0x77`を一度送る。以後は最大10回・約2秒で`0x21`だけを確認 |
 | 設定応答と製品コードの区別 | 受信全体が既知の成功応答だけの場合に限り消費する。未知・失敗・不完全な応答やコード混在は従来の検査へ渡す |
 
-通常モードのFW・手動モード・TRIG状態を読み戻し、通信初期化まで成功してから`READY`へ進みます。`0x77`の送信ACKだけで成功とはしません。復帰未確認の記録が残る場合は、本体をリセットしても`0x54`の再確認・命令再送を行いません。Unitへの自動OFF/ON、本体の自動再起動ループ、UnitのFW消去・書換えを行う実装にはしていません。
+通常モードのFW・手動モード・TRIG状態を読み戻し、通信初期化まで成功してから`READY`へ進みます。`0x77`の送信ACKだけで成功とはしません。この命令による実機のブートモードからの復帰は未確認です。復帰未確認の記録が残る場合は、本体をリセットしても`0x54`の再確認・命令再送を行いません。Unitへの自動OFF/ON、本体の自動再起動ループ、UnitのFW消去・書換えを行う実装にはしていません。
 
 実装は[本体初期化と読取器制御](https://github.com/TikTak007/M5Stack-Inventory/blob/9ab792067ac24fd33bc63c6bf335fbf16fc39e5c/platformio/src/main.cpp)、[IR消灯を保持する初期化](https://github.com/TikTak007/M5Stack-Inventory/blob/9ab792067ac24fd33bc63c6bf335fbf16fc39e5c/platformio/include/StickPowerStartup.h)、[ブート復帰処理](https://github.com/TikTak007/M5Stack-Inventory/blob/9ab792067ac24fd33bc63c6bf335fbf16fc39e5c/platformio/include/ReaderStartup.h)を参照してください。
 
 ## 別途見つかったCONTROL BYTESの問題
 
-復帰処理を追加した後、TRIGを押していないリセット直後に`CONTROL BYTES`が表示され、引用符に続く`aA`や`3u`に似た文字が見えました。これは受信データに制御文字があるとして在庫登録を止めた表示で、起動時の認識エラーとは別です。
+TRIGを押していない起動直後に`CONTROL BYTES`が表示される場合があります。受信データに制御文字が含まれるため在庫登録を止めた表示で、I2C認識エラーとは別の問題です。
 
-表示の先頭は、Unit内部のモード設定・停止への応答と整合します。公式UART受信処理は単独の5バイト応答を除外しますが、複数応答がまとまった場合は読取り結果へ渡す経路があります。今回の実受信バイト列は未取得で、応答連結を確定原因とはしていません。[公式UART受信処理](https://github.com/m5stack/M5Unit-QRCode-Internal-FW/blob/2c44fe0fd85d3346bd6484fcd59e5cb333dd7937/code/qrcode/Core/Src/stm32f0xx_it.c#L226)
+Unit内部のモード設定・停止への応答が、読取り結果に混入した可能性があります。公式UART受信処理は単独の5バイト応答を除外しますが、複数応答がまとまった場合は読取り結果へ渡す経路があります。今回の実受信バイト列は未取得で、応答連結を確定原因とはしていません。[公式UART受信処理](https://github.com/m5stack/M5Unit-QRCode-Internal-FW/blob/2c44fe0fd85d3346bd6484fcd59e5cb333dd7937/code/qrcode/Core/Src/stm32f0xx_it.c#L226)
 
 次の成功応答だけで受信全体が構成される場合を、製品コードとして扱わないよう修正しました。応答の形式は[公式プロトコルPDF・4～6ページ](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/770/Unit-QRCode-Protocol-EN.pdf)に基づきます。
 
@@ -81,15 +77,6 @@ StickS3ではGrove出力とIR TX/RXの給電が`EXT_5V_EN`で制御されます�
 | 読取り停止成功 | `33 75 02 00 00` |
 
 [応答判定コード](https://github.com/TikTak007/M5Stack-Inventory/blob/9ab792067ac24fd33bc63c6bf335fbf16fc39e5c/platformio/include/ReaderReply.h)は読取り状態・表示・在庫キューの更新前に適用します。混在データから応答らしい部分だけを削る処理や、追加の待ち時間は入れていません。
-
-## 確認結果と完了判断
-
-- 2026-09-26：修正版をStickS3のアプリ領域へ書込み、書込み内容の照合に成功。保存済みの未送信イベント領域は保持。
-- 同日：利用者が物理リセットを1回実施し、TRIG未操作で`READY`へ到達、`CONTROL BYTES`の再発なしを確認。
-- 2026-09-27：利用者が翌日も問題が起きないことを確認し、本件を解決・対策完了と判断。
-- ソフトウェア検証：両機種のPlatformIO送信版ビルド、応答判定・永続FIFO・表示状態などの合成試験、独立レビュー、GitHub CIを通過。
-
-ここでの完了は、この実機での症状改善と利用者の受入判断です。電源・信号の波形、実際の`0x77`からの復帰、実機で応答除外が動いたログ、電池単独や多数の実機での成功率は未確認です。
 
 ## 同じ症状に遭遇した場合
 
