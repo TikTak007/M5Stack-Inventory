@@ -1,0 +1,43 @@
+name: PlatformIO and Apps Script tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  apps-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run Apps Script tests
+        run: node --test tests/ingest.test.cjs
+
+  device-state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: bblanchon/ArduinoJson
+          ref: v7.2.1
+          path: tmp/test-deps/ArduinoJson
+      - name: Verify durable FIFO, typed ACK and status transitions
+        run: python3 tools/display-simulator/tests/run_tests.py
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        # esptool used by the StickS3 environment imports intelhex at build time.
+        run: python -m pip install platformio intelhex
+      - name: Prepare credential-free build settings
+        run: cp platformio/include/secrets.example.h platformio/include/secrets.h
+      - name: Build firmware environments
+        run: pio run -d platformio -e atoms3 -e atoms3-send-check -e atoms3-official-qrcode -e sticks3 -e sticks3-send-check

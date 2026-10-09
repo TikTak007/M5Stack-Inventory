@@ -1,0 +1,39 @@
+name: Arduino IDE build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  atoms3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Check generated Arduino sketch
+        run: python3 tools/sync_arduino_sketch.py --check
+
+      - name: Install M5Stack board package
+        run: |
+          arduino-cli core update-index \
+            --additional-urls https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+          arduino-cli core install m5stack:esp32@3.3.7 \
+            --additional-urls https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+
+      - name: Install sketch libraries
+        run: |
+          arduino-cli lib install "M5Unified@0.2.22"
+          arduino-cli lib install "M5GFX@0.2.29"
+          arduino-cli lib install "M5UnitQRCode@1.0.0"
+          arduino-cli lib install "ArduinoJson@7.2.1"
+
+      - name: Prepare credential-free build settings
+        run: cp arduino/M5Stack_Inventory/secrets.example.h arduino/M5Stack_Inventory/secrets.h
+
+      - name: Compile for AtomS3
+        run: |
+          arduino-cli compile \
+            --fqbn m5stack:esp32:m5stack_atoms3 \
+            --board-options CDCOnBoot=cdc \
+            arduino/M5Stack_Inventory
