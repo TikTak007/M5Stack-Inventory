@@ -165,7 +165,7 @@ class InventoryDisplay {
   void beginFrame(const InventoryView& view, uint16_t accent) {
     const int16_t width = sprite_.width();
     const int16_t height = sprite_.height();
-    const int16_t headerHeight = height >= 180 ? 31 : 21;
+    const int16_t headerHeight = height >= 180 ? 31 : 24;
     const uint16_t background = rgb(5, 13, 24);
     const uint16_t grid = rgb(10, 27, 43);
     const uint16_t header = rgb(9, 24, 38);
@@ -193,7 +193,7 @@ class InventoryDisplay {
     } else {
       drawWifiBadge(view.wifi, headerHeight, false);
       sprite_.setTextDatum(middle_right);
-      sprite_.setFont(&fonts::efontJA_10_b);
+      sprite_.setFont(&fonts::efontJA_12_b);
       sprite_.setTextColor(rgb(232, 242, 250), header);
       char label[16];
       snprintf(label, sizeof(label), "UNSENT %u", view.unsent);
@@ -226,28 +226,31 @@ class InventoryDisplay {
       return;
     }
     const int16_t width = sprite_.width();
-    const int16_t boxWidth = hasBattery ? 38 : 42;
+    const int16_t boxWidth = hasBattery ? 38 : 27;
     const int16_t x = hasBattery ? width - 94 : 4;
-    const int16_t y = 3;
-    const int16_t boxHeight = headerHeight - 7;
+    const int16_t y = 2;
+    const int16_t boxHeight = headerHeight - 5;
     const uint16_t badge = rgb(14, 35, 51);
     const uint16_t color = state == WifiVisualState::online
                                ? rgb(42, 231, 166)
                                : state == WifiVisualState::connecting ? rgb(255, 184, 76)
                                                                        : rgb(99, 119, 137);
     sprite_.fillRoundRect(x, y, boxWidth, boxHeight, 4, badge);
-    const int16_t baseY = y + boxHeight - 3;
-    sprite_.fillRect(x + 5, baseY - 3, 2, 3, color);
-    sprite_.fillRect(x + 9, baseY - 6, 2, 6, color);
-    sprite_.fillRect(x + 13, baseY - 9, 2, 9, color);
-    sprite_.setFont(&fonts::efontJA_10_b);
-    sprite_.setTextDatum(middle_right);
-    sprite_.setTextColor(color, badge);
-    sprite_.drawString(state == WifiVisualState::online
-                           ? "ON"
-                           : state == WifiVisualState::connecting ? "..." : "OFF",
-                       x + boxWidth - 5, y + boxHeight / 2);
-    sprite_.setTextDatum(middle_center);
+    const int16_t cx = x + boxWidth / 2;
+    sprite_.drawLine(cx - 9, y + 9, cx - 6, y + 6, color);
+    sprite_.drawLine(cx - 6, y + 6, cx, y + 4, color);
+    sprite_.drawLine(cx, y + 4, cx + 6, y + 6, color);
+    sprite_.drawLine(cx + 6, y + 6, cx + 9, y + 9, color);
+    sprite_.drawLine(cx - 6, y + 12, cx - 3, y + 9, color);
+    sprite_.drawLine(cx - 3, y + 9, cx, y + 8, color);
+    sprite_.drawLine(cx, y + 8, cx + 3, y + 9, color);
+    sprite_.drawLine(cx + 3, y + 9, cx + 6, y + 12, color);
+    sprite_.drawLine(cx - 3, y + 14, cx, y + 12, color);
+    sprite_.drawLine(cx, y + 12, cx + 3, y + 14, color);
+    sprite_.fillCircle(cx, y + 16, 1, color);
+    if (state == WifiVisualState::offline) {
+      sprite_.drawLine(cx - 10, y + 18, cx + 10, y + 2, rgb(235, 244, 249));
+    }
   }
 
   // 中身全体を残量比で塗り、白い数字に十分なコントラストを残す。
@@ -284,19 +287,21 @@ class InventoryDisplay {
   void drawStatus(const char* title, const char* subtitle) {
     const int16_t height = sprite_.height();
     const bool hasCodePanel = height < 180 && compactCodePanel_;
-    const int16_t titleY = hasCodePanel ? 59 : (height >= 180 ? (stickDense_ ? 123 : 131) : 78);
+    const int16_t titleY = hasCodePanel ? 60 : (height >= 180 ? (stickDense_ ? 123 : 131) : 77);
     const int16_t subtitleY = height >= 180 ? (stickDense_ ? 143 : 155) : titleY + 17;
     if (height >= 180) {
       sprite_.setFont(&fonts::FreeSansBold9pt7b);
       if (sprite_.textWidth(title) > sprite_.width() - 8) sprite_.setFont(&fonts::efontJA_16_b);
     } else {
-      sprite_.setFont(&fonts::efontJA_14_b);
+      sprite_.setFont(&fonts::FreeSansBold9pt7b);
+      if (sprite_.textWidth(title) > sprite_.width() - 8) sprite_.setFont(&fonts::efontJA_16_b);
+      if (sprite_.textWidth(title) > sprite_.width() - 8) sprite_.setFont(&fonts::efontJA_14_b);
     }
     sprite_.setTextColor(rgb(242, 248, 252));
     sprite_.drawString(title, sprite_.width() / 2, titleY);
-    sprite_.setFont(height >= 180 ? &fonts::efontJA_12_b : &fonts::efontJA_10_b);
+    sprite_.setFont(&fonts::efontJA_12_b);
     if (sprite_.textWidth(subtitle) > sprite_.width() - 8) sprite_.setFont(&fonts::efontJA_10_b);
-    sprite_.setTextColor(height >= 180 ? rgb(145, 174, 193) : rgb(111, 139, 160));
+    sprite_.setTextColor(rgb(145, 174, 193));
     sprite_.drawString(subtitle, sprite_.width() / 2, subtitleY);
   }
 
@@ -335,7 +340,7 @@ class InventoryDisplay {
   }
 
   void drawUploadIcon(uint16_t color, uint8_t phase) {
-    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : 39;
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : (compactCodePanel_ ? 37 : 39);
     const int16_t cx = sprite_.width() / 2;
     sprite_.drawRoundRect(cx - 20, cy - 10, 40, 21, 7, rgb(42, 79, 99));
     sprite_.drawFastVLine(cx, cy - 15, 21, color);
@@ -349,9 +354,9 @@ class InventoryDisplay {
   }
 
   void drawCheckIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : 39;
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : (compactCodePanel_ ? 37 : 39);
     const int16_t cx = sprite_.width() / 2;
-    const int16_t radius = sprite_.height() >= 180 ? 19 : 14;
+    const int16_t radius = sprite_.height() >= 180 ? 19 : (compactCodePanel_ ? 12 : 14);
     sprite_.fillCircle(cx, cy, radius, rgb(10, 52, 48));
     sprite_.drawCircle(cx, cy, radius, color);
     sprite_.drawLine(cx - 7, cy, cx - 2, cy + 5, color);
@@ -361,18 +366,18 @@ class InventoryDisplay {
   }
 
   void drawPendingIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : 39;
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : (compactCodePanel_ ? 37 : 39);
     const int16_t cx = sprite_.width() / 2;
-    const int16_t radius = sprite_.height() >= 180 ? 19 : 14;
+    const int16_t radius = sprite_.height() >= 180 ? 19 : (compactCodePanel_ ? 12 : 14);
     sprite_.drawCircle(cx, cy, radius, color);
     sprite_.drawFastVLine(cx, cy - radius + 5, radius - 3, color);
     sprite_.drawLine(cx, cy, cx + 7, cy + 4, color);
   }
 
   void drawErrorIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : (compactCodePanel_ ? 39 : 45);
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : (compactCodePanel_ ? 37 : 45);
     const int16_t cx = sprite_.width() / 2;
-    sprite_.drawCircle(cx, cy, 15, color);
+    sprite_.drawCircle(cx, cy, sprite_.height() >= 180 ? 15 : 13, color);
     sprite_.fillRect(cx - 1, cy - 8, 3, 11, color);
     sprite_.fillCircle(cx, cy + 8, 2, color);
   }
@@ -391,7 +396,7 @@ class InventoryDisplay {
     if (!code.length()) return;
     const int16_t width = sprite_.width();
     const int16_t height = sprite_.height();
-    const int16_t panelY = height >= 180 ? height - 72 : height - 48;
+    const int16_t panelY = height >= 180 ? height - 72 : height - 45;
     const int16_t panelHeight = height - panelY - 5;
     const uint16_t panel = rgb(10, 27, 43);
     const uint16_t border = rgb(26, 58, 78);

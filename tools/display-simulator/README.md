@@ -29,6 +29,9 @@ The StickS3 battery body fills from left to right in proportion to the clamped
 0-100% value, while the percentage remains centered inside it. An unavailable
 reading leaves the body empty and shows `--%`; the Wi-Fi arcs are green when
 online and gray with a slash when offline.
+AtomS3 uses the same Wi-Fi arc colors and slash in a compact header; its
+state title and unsent count are enlarged for the 128 x 128 display. It does
+not show a battery reading.
 
 Intel macOS can use `-e native` and `.pio/build/native/program`.
 
