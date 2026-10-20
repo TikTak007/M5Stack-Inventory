@@ -68,6 +68,7 @@ class InventoryDisplay {
     if (!ready_) return;
 
     compactCodePanel_ = view.code.length() || view.screen == InventoryScreen::full;
+    stickDense_ = sprite_.height() >= 180 && (compactCodePanel_ || view.batchTotal > 0);
     beginFrame(view, accentFor(view.screen));
     switch (view.screen) {
       case InventoryScreen::boot:
@@ -76,7 +77,7 @@ class InventoryDisplay {
         break;
       case InventoryScreen::ready:
         drawScanFrame(accentFor(view.screen));
-        drawStatus("READY", "PRESS & HOLD TRIG");
+        drawStatus("READY", sprite_.height() >= 180 ? "HOLD TRIG" : "PRESS & HOLD TRIG");
         break;
       case InventoryScreen::scanning:
         drawActivityIcon(accentFor(view.screen), view.phase);
@@ -99,7 +100,7 @@ class InventoryDisplay {
       case InventoryScreen::full:
         drawErrorIcon(accentFor(view.screen));
         drawStatus(view.unsent >= 16 ? "STORAGE FULL" : "SCAN REJECTED",
-                   view.unsent >= 16 ? "16/16 NOT ACCEPTED" : "SPACE AVAILABLE");
+                   view.unsent >= 16 ? (sprite_.height() >= 180 ? "SCAN REJECTED" : "16/16 NOT ACCEPTED") : "SPACE AVAILABLE");
         drawRejectionPanel(view.unsent >= 16);
         break;
       case InventoryScreen::captured:
@@ -110,8 +111,9 @@ class InventoryDisplay {
         break;
       case InventoryScreen::queued:
         drawPendingIcon(accentFor(view.screen));
-        drawStatus("STORED", view.wifi == WifiVisualState::online
-          ? "DEVICE / AUTO RETRY" : "DEVICE / WAIT WIFI");
+        drawStatus("STORED", sprite_.height() >= 180
+          ? (view.wifi == WifiVisualState::online ? "AUTO RETRY" : "WAIT WIFI")
+          : (view.wifi == WifiVisualState::online ? "DEVICE / AUTO RETRY" : "DEVICE / WAIT WIFI"));
         drawCodePanel(view.code);
         break;
       case InventoryScreen::pending:
@@ -121,7 +123,7 @@ class InventoryDisplay {
         break;
       case InventoryScreen::noCode:
         drawPendingIcon(accentFor(view.screen));
-        drawStatus("NO CODE", "TRY QR TRIG AGAIN");
+        drawStatus("NO CODE", sprite_.height() >= 180 ? "HOLD TRIG AGAIN" : "TRY QR TRIG AGAIN");
         break;
       case InventoryScreen::error:
         drawErrorIcon(accentFor(view.screen));
@@ -129,7 +131,7 @@ class InventoryDisplay {
         if (view.code.length()) drawCodePanel(view.code);
         break;
     }
-    if (sprite_.height() >= 180 && view.batchTotal) drawProgress(view, 153);
+    if (sprite_.height() >= 180 && view.batchTotal) drawProgress(view, 159);
     sprite_.pushSprite(0, 0);
   }
 
@@ -163,7 +165,7 @@ class InventoryDisplay {
   void beginFrame(const InventoryView& view, uint16_t accent) {
     const int16_t width = sprite_.width();
     const int16_t height = sprite_.height();
-    const int16_t headerHeight = height >= 180 ? 27 : 21;
+    const int16_t headerHeight = height >= 180 ? 31 : 21;
     const uint16_t background = rgb(5, 13, 24);
     const uint16_t grid = rgb(10, 27, 43);
     const uint16_t header = rgb(9, 24, 38);
@@ -180,15 +182,14 @@ class InventoryDisplay {
     sprite_.setTextDatum(middle_left);
     sprite_.setTextColor(rgb(232, 242, 250), header);
     if (height >= 180) {
-      sprite_.drawString("KVS", 6, headerHeight / 2 - 1);
       drawWifiBadge(view.wifi, headerHeight, view.hasBattery);
       if (view.hasBattery) drawBatteryBadge(view.batteryPercent, headerHeight);
       sprite_.setTextDatum(middle_center);
-      sprite_.setFont(&fonts::efontJA_14_b);
+      sprite_.setFont(&fonts::efontJA_16_b);
       sprite_.setTextColor(rgb(232, 242, 250));
       char label[16];
       snprintf(label, sizeof(label), "UNSENT %u", view.unsent);
-      sprite_.drawString(label, width / 2, 40);
+      sprite_.drawString(label, width / 2, 47);
     } else {
       drawWifiBadge(view.wifi, headerHeight, false);
       sprite_.setTextDatum(middle_right);
@@ -202,6 +203,28 @@ class InventoryDisplay {
   }
 
   void drawWifiBadge(WifiVisualState state, int16_t headerHeight, bool hasBattery) {
+    if (sprite_.height() >= 180) {
+      const uint16_t badge = rgb(14, 35, 51);
+      const uint16_t color = state == WifiVisualState::online ? rgb(42, 231, 166)
+                             : state == WifiVisualState::connecting ? rgb(255, 184, 76)
+                                                                      : rgb(159, 179, 195);
+      sprite_.fillRoundRect(6, 4, 31, 23, 4, badge);
+      sprite_.drawLine(11, 13, 15, 9, color);
+      sprite_.drawLine(15, 9, 21, 7, color);
+      sprite_.drawLine(21, 7, 27, 9, color);
+      sprite_.drawLine(27, 9, 31, 13, color);
+      sprite_.drawLine(14, 16, 17, 13, color);
+      sprite_.drawLine(17, 13, 21, 12, color);
+      sprite_.drawLine(21, 12, 25, 13, color);
+      sprite_.drawLine(25, 13, 28, 16, color);
+      sprite_.drawLine(17, 19, 21, 17, color);
+      sprite_.drawLine(21, 17, 25, 19, color);
+      sprite_.fillCircle(21, 22, 1, color);
+      if (state == WifiVisualState::offline) {
+        sprite_.drawLine(11, 24, 32, 6, rgb(235, 244, 249));
+      }
+      return;
+    }
     const int16_t width = sprite_.width();
     const int16_t boxWidth = hasBattery ? 38 : 42;
     const int16_t x = hasBattery ? width - 94 : 4;
@@ -227,55 +250,62 @@ class InventoryDisplay {
     sprite_.setTextDatum(middle_center);
   }
 
-  // StickS3では残量の数字を電池の輪郭内に置き、狭いヘッダーでも一目で読めるようにする。
+  // 中身全体を残量比で塗り、白い数字に十分なコントラストを残す。
   void drawBatteryBadge(int16_t percent, int16_t headerHeight) {
-    const int16_t x = sprite_.width() - 50;
-    const int16_t y = (headerHeight - 17) / 2;
+    const int16_t x = sprite_.width() - 69;
+    const int16_t y = (headerHeight - 22) / 2;
     const uint16_t color = percent < 0 ? rgb(99, 119, 137)
                            : percent <= 15 ? rgb(255, 83, 112)
                            : percent <= 30 ? rgb(255, 184, 76)
                                            : rgb(42, 231, 166);
-    const uint16_t fill = percent <= 15 ? rgb(55, 28, 42)
-                          : percent <= 30 ? rgb(58, 45, 30)
-                                          : rgb(14, 54, 52);
-    sprite_.fillRoundRect(x, y, 43, 17, 3, rgb(14, 35, 51));
+    const uint16_t fill = percent <= 15 ? rgb(188, 65, 79)
+                          : percent <= 30 ? rgb(144, 103, 14)
+                                          : rgb(13, 128, 98);
+    const uint16_t badge = rgb(14, 35, 51);
+    sprite_.fillRoundRect(x, y, 61, 22, 3, badge);
     if (percent > 0) {
-      const int16_t level = static_cast<int32_t>(39) * (percent > 100 ? 100 : percent) / 100;
-      sprite_.fillRect(x + 2, y + 2, level, 13, fill);
+      const int16_t level = static_cast<int32_t>(59) * (percent > 100 ? 100 : percent) / 100;
+      sprite_.fillRoundRect(x + 1, y + 1, 59, 20, 2, fill);
+      if (level < 59) sprite_.fillRect(x + 1 + level, y + 1, 59 - level, 20, badge);
     }
-    sprite_.drawRoundRect(x, y, 43, 17, 3, color);
-    sprite_.fillRect(x + 43, y + 5, 3, 7, color);
+    sprite_.drawRoundRect(x, y, 61, 22, 3, color);
+    sprite_.fillRect(x + 61, y + 7, 3, 8, color);
     char label[6];
-    if (percent < 0) {
-      snprintf(label, sizeof(label), "--%%");
-    } else {
-      snprintf(label, sizeof(label), "%d%%", percent > 100 ? 100 : percent);
-    }
-    sprite_.setFont(&fonts::efontJA_10_b);
+    if (percent < 0) snprintf(label, sizeof(label), "--%%");
+    else snprintf(label, sizeof(label), "%d%%", percent > 100 ? 100 : percent);
+    sprite_.setFont(&fonts::FreeSansBold9pt7b);
     sprite_.setTextDatum(middle_center);
     sprite_.setTextColor(rgb(242, 248, 252));
-    sprite_.drawString(label, x + 21, y + 8);
+    // FreeSansBold9pt's visible glyphs sit above its datum; +12 centers the ink in the 22px body.
+    sprite_.drawString(label, x + 30, y + 12);
   }
 
-  // 128px画面ではコード表示と重ならない位置へ状態文言を寄せる。
+  // StickS3はヘッダー拡大分だけ本文を移動し、コードと進捗の領域を守る。
   void drawStatus(const char* title, const char* subtitle) {
     const int16_t height = sprite_.height();
     const bool hasCodePanel = height < 180 && compactCodePanel_;
-    const int16_t titleY = hasCodePanel ? 59 : (height >= 180 ? 116 : 78);
-    const int16_t subtitleY = titleY + (height >= 180 ? 24 : 17);
-
-    sprite_.setFont(height >= 180 ? &fonts::efontJA_16_b : &fonts::efontJA_14_b);
+    const int16_t titleY = hasCodePanel ? 59 : (height >= 180 ? (stickDense_ ? 123 : 131) : 78);
+    const int16_t subtitleY = height >= 180 ? (stickDense_ ? 143 : 155) : titleY + 17;
+    if (height >= 180) {
+      sprite_.setFont(&fonts::FreeSansBold9pt7b);
+      if (sprite_.textWidth(title) > sprite_.width() - 8) sprite_.setFont(&fonts::efontJA_16_b);
+    } else {
+      sprite_.setFont(&fonts::efontJA_14_b);
+    }
     sprite_.setTextColor(rgb(242, 248, 252));
     sprite_.drawString(title, sprite_.width() / 2, titleY);
-    sprite_.setFont(&fonts::efontJA_10_b);
-    sprite_.setTextColor(rgb(111, 139, 160));
+    sprite_.setFont(height >= 180 ? &fonts::efontJA_12_b : &fonts::efontJA_10_b);
+    if (sprite_.textWidth(subtitle) > sprite_.width() - 8) sprite_.setFont(&fonts::efontJA_10_b);
+    sprite_.setTextColor(height >= 180 ? rgb(145, 174, 193) : rgb(111, 139, 160));
     sprite_.drawString(subtitle, sprite_.width() / 2, subtitleY);
   }
+
+  int16_t stickIconY() const { return stickDense_ ? 84 : 91; }
 
   void drawScanFrame(uint16_t color) {
     const int16_t height = sprite_.height();
     const int16_t cx = sprite_.width() / 2;
-    const int16_t cy = height >= 180 ? 84 : 47;
+    const int16_t cy = height >= 180 ? stickIconY() : 47;
     const int16_t r = height >= 180 ? 25 : 19;
     const int16_t arm = height >= 180 ? 10 : 8;
     sprite_.drawFastHLine(cx - r, cy - r, arm, color);
@@ -293,7 +323,7 @@ class InventoryDisplay {
   void drawActivityIcon(uint16_t color, uint8_t phase) {
     const int16_t height = sprite_.height();
     const int16_t cx = sprite_.width() / 2;
-    const int16_t cy = height >= 180 ? 84 : 43;
+    const int16_t cy = height >= 180 ? stickIconY() : 43;
     const int16_t barWidth = height >= 180 ? 7 : 5;
     const int16_t gap = height >= 180 ? 6 : 5;
     for (int i = 0; i < 3; ++i) {
@@ -305,7 +335,7 @@ class InventoryDisplay {
   }
 
   void drawUploadIcon(uint16_t color, uint8_t phase) {
-    const int16_t cy = sprite_.height() >= 180 ? 84 : 39;
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : 39;
     const int16_t cx = sprite_.width() / 2;
     sprite_.drawRoundRect(cx - 20, cy - 10, 40, 21, 7, rgb(42, 79, 99));
     sprite_.drawFastVLine(cx, cy - 15, 21, color);
@@ -319,7 +349,7 @@ class InventoryDisplay {
   }
 
   void drawCheckIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? 84 : 39;
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : 39;
     const int16_t cx = sprite_.width() / 2;
     const int16_t radius = sprite_.height() >= 180 ? 19 : 14;
     sprite_.fillCircle(cx, cy, radius, rgb(10, 52, 48));
@@ -331,7 +361,7 @@ class InventoryDisplay {
   }
 
   void drawPendingIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? 84 : 39;
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : 39;
     const int16_t cx = sprite_.width() / 2;
     const int16_t radius = sprite_.height() >= 180 ? 19 : 14;
     sprite_.drawCircle(cx, cy, radius, color);
@@ -340,7 +370,7 @@ class InventoryDisplay {
   }
 
   void drawErrorIcon(uint16_t color) {
-    const int16_t cy = sprite_.height() >= 180 ? 84 : (compactCodePanel_ ? 39 : 45);
+    const int16_t cy = sprite_.height() >= 180 ? stickIconY() : (compactCodePanel_ ? 39 : 45);
     const int16_t cx = sprite_.width() / 2;
     sprite_.drawCircle(cx, cy, 15, color);
     sprite_.fillRect(cx - 1, cy - 8, 3, 11, color);
@@ -400,7 +430,7 @@ class InventoryDisplay {
   void drawProgress(const InventoryView& view, int16_t y) {
     char label[24];
     snprintf(label, sizeof(label), "%u/%u SAVED", view.batchSaved, view.batchTotal);
-    sprite_.setFont(&fonts::efontJA_14_b);
+    sprite_.setFont(sprite_.height() >= 180 ? &fonts::efontJA_16_b : &fonts::efontJA_14_b);
     sprite_.setTextDatum(middle_center);
     sprite_.setTextColor(rgb(232, 242, 250));
     sprite_.drawString(label, sprite_.width() / 2, y);
@@ -430,4 +460,5 @@ class InventoryDisplay {
   M5Canvas sprite_;
   bool ready_ = false;
   bool compactCodePanel_ = false;
+  bool stickDense_ = false;
 };

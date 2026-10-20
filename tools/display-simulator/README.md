@@ -25,6 +25,10 @@ python3 convert_captures.py ../../docs/assets/display
 For StickS3 previews, replace `native_arm` with `sticks3_arm` and set
 `INVENTORY_CAPTURE_DIR` to a separate output folder. The captured battery
 percentage is a simulator fixture; the device reads its value from M5Unified.
+The StickS3 battery body fills from left to right in proportion to the clamped
+0-100% value, while the percentage remains centered inside it. An unavailable
+reading leaves the body empty and shows `--%`; the Wi-Fi arcs are green when
+online and gray with a slash when offline.
 
 Intel macOS can use `-e native` and `.pio/build/native/program`.
 
