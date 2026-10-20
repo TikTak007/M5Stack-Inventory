@@ -113,7 +113,7 @@ PC上で実際の`InventoryDisplay.h`をM5GFXのSDLバックエンドへ渡し�
 |---|---|---|---|
 | ![STORED / WAIT WIFI](docs/assets/display/pending.png) | ![SYNCING](docs/assets/display/syncing.png) | ![ALL SAVED](docs/assets/display/all-saved.png) | ![STORAGE FULL](docs/assets/display/queue-full.png) |
 
-上の画面例はAtomS3です。StickS3は左上の弧形アイコンでWi-Fi状態を示し、右上の電池アイコンを残量に比例して左から塗ります。電池内には大きな残量％を表示します。次の82%はシミュレーターの例で、実機ではM5Unifiedから残量を取得します。取得できない場合は塗らずに`--%`を表示します。
+上の画面例はAtomS3です。AtomS3とStickS3は左上の弧形アイコンでWi-Fi状態を示し、緑は接続、橙は接続中、灰色と斜線は未接続です。AtomS3では状態名と未送信数を大きく表示し、128×128pxの画面に合わせて配置します。AtomS3に電池残量は表示しません。StickS3は右上の電池アイコンを残量に比例して左から塗り、中央に大きな残量％を表示します。次の82%はシミュレーターの例で、実機ではM5Unifiedから残量を取得します。取得できない場合は塗らずに`--%`を表示します。
 
 | StickS3 READY | StickS3 SAVED | StickS3 STORED / WAIT WIFI |
 |---|---|---|
